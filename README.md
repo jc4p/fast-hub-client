@@ -15,7 +15,7 @@ Hi, I needed every cast on Farcaster on my computer for analysis, well, need is 
 
 Then I tried using the clients I could find but they were painfully slow, so I said "i wonder if .net is a good solution for this cause it has a good concurrency story" -- that was the end of my coding contributions to this repo, the rest was done by my good friend Claude with some shoulder watching and occasional help from me.
 
-As of 2/28/2025, this repo can pull all every cast from every user FID 1 milion and below (157 mil excluding deleted casts) in 69.4 minutes.
+As of 2/28/2025, this repo can pull all every cast from every user FID 1 million and below (157 mil casts excluding deleted casts) in 69.4 minutes.
 
 How we approached this can be found in IMPLEMENTATION_STEPS.md which we used as the roadmap for the project. The main approach was to try different parts of the pipeline, profile them, pick the best one and move onto the next part.
 
