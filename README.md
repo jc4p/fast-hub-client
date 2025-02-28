@@ -2,8 +2,7 @@
 
 ## Usage
 ```
-dotnet build
- dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release
 ```
 
 This will start downloading all casts to outputs/casts/cast_messages/
