@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+import "minimal_message.proto";
+import "minimal_hub_event.proto";
+import "minimal_request_response.proto";
+
+service MinimalHubService {
+  // Core Message Methods
+  rpc SubmitMessage(Message) returns (Message);
+  rpc ValidateMessage(Message) returns (ValidationResponse);
+
+  // Basic Event Methods
+  rpc GetEvent(EventRequest) returns (HubEvent);
+
+  // Essential Casts (Messages) Methods
+  rpc GetCast(CastId) returns (Message);
+  rpc GetCastsByFid(FidRequest) returns (MessagesResponse);
+  rpc GetCastsByParent(CastsByParentRequest) returns (MessagesResponse);
+
+  // Minimal User Data - needed for basic user context
+  rpc GetUserDataByFid(FidRequest) returns (MessagesResponse);
+
+  // Basic Hub Info
+  rpc GetInfo(HubInfoRequest) returns (HubInfoResponse);
+} 

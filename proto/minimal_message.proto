@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+/**
+  * A Message is a delta operation on the network. The message protobuf is an envelope
+  * that wraps a MessageData object and contains a hash and signature which can verify its authenticity.
+  */
+message Message {
+  MessageData data = 1; // Contents of the message
+  bytes hash = 2; // Hash digest of data
+  HashScheme hash_scheme = 3; // Hash scheme that produced the hash digest
+  bytes signature = 4; // Signature of the hash digest
+  SignatureScheme signature_scheme = 5; // Signature scheme that produced the signature
+  bytes signer = 6; // Public key or address of the key pair that produced the signature
+}
+
+/**
+ * A MessageData object contains properties common to all messages and wraps a body object which
+ * contains properties specific to the MessageType.
+ */
+message MessageData {
+  MessageType type = 1; // Type of message contained in the body
+  uint64 fid = 2; // ID of the user producing the message
+  uint32 timestamp = 3; // Epoch timestamp in seconds
+  Network network = 4; // Network the message is intended for
+  oneof body {
+    CastAddBody cast_add_body = 5;
+    CastRemoveBody cast_remove_body = 6;
+    UserDataBody user_data_body = 7;
+  } // Properties specific to the MessageType
+}
+
+/** Type of hashing scheme used to produce a digest of MessageData */
+enum HashScheme {
+  HASH_SCHEME_NONE = 0;
+  HASH_SCHEME_BLAKE3 = 1; // Default scheme for hashing MessageData
+}
+
+/** Type of signature scheme used to sign the Message hash */
+enum SignatureScheme {
+  SIGNATURE_SCHEME_NONE = 0;
+  SIGNATURE_SCHEME_ED25519 = 1; // Ed25519 signature (default)
+}
+
+/** Type of the MessageBody */
+enum MessageType {
+  MESSAGE_TYPE_NONE = 0;
+  MESSAGE_TYPE_CAST_ADD = 1; // Add a new Cast
+  MESSAGE_TYPE_CAST_REMOVE = 2; // Remove an existing Cast
+  MESSAGE_TYPE_USER_DATA_ADD = 3; // Add metadata about a user
+}
+
+/** Network the message is intended for */
+enum Network {
+  NETWORK_NONE = 0;
+  NETWORK_MAINNET = 1; // Public primary network
+  NETWORK_TESTNET = 2; // Public test network
+  NETWORK_DEVNET = 3; // Private test network
+}
+
+/** Adds metadata about a user */
+message UserDataBody {
+  UserDataType type = 1; // Type of metadata
+  string value = 2; // Value of the metadata
+}
+
+/** Type of UserData */
+enum UserDataType {
+  USER_DATA_TYPE_NONE = 0;
+  USER_DATA_TYPE_PFP = 1; // Profile Picture for the user
+  USER_DATA_TYPE_DISPLAY = 2; // Display Name for the user
+  USER_DATA_TYPE_BIO = 3; // Bio for the user
+  USER_DATA_TYPE_URL = 4; // URL of the user
+}
+
+/** Adds a new Cast (message) */
+message CastAddBody {
+  string text = 1; // Text of the cast
+  optional CastId parent_cast_id = 2; // Parent cast for threading conversations
+  repeated uint64 mentions = 3; // IDs mentioned in the cast
+}
+
+/** Removes an existing Cast */
+message CastRemoveBody {
+  bytes target_hash = 1; // Hash of the cast to remove
+}
+
+/** Identifier used to look up a Cast */
+message CastId {
+  uint64 fid = 1; // ID of the user who created the cast
+  bytes hash = 2; // Hash of the cast
+} 

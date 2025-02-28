@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+import "minimal_message.proto";
+import "minimal_hub_event.proto";
+
+message Empty {}
+
+message EventRequest {
+  uint64 id = 1;
+}
+
+message HubInfoRequest {
+  bool db_stats = 1;
+}
+
+message HubInfoResponse {
+  string version = 1;
+  bool is_syncing = 2;
+  string nickname = 3;
+  DbStats db_stats = 4;
+}
+
+message DbStats {
+  uint64 num_messages = 1;
+  uint64 approx_size = 2;
+}
+
+message FidRequest {
+  uint64 fid = 1;
+  optional uint32 page_size = 2;
+  optional bytes page_token = 3;
+  optional bool reverse = 4;
+}
+
+message MessagesResponse {
+  repeated Message messages = 1;
+  optional bytes next_page_token = 2;
+}
+
+message CastsByParentRequest {
+  CastId parent_cast_id = 1;
+  optional uint32 page_size = 2;
+  optional bytes page_token = 3;
+  optional bool reverse = 4;
+}
+
+message ValidationResponse {
+  bool valid = 1;
+  string message = 2;
+} 
