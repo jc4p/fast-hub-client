@@ -9,6 +9,83 @@ A high-performance gRPC client implementation for Hub services, optimized based 
 - **Resilient**: Built-in retry policies, circuit breakers, and connection management
 - **Configurable**: Flexible options to tune performance for different workload patterns
 - **Thread-Safe**: Safe for concurrent use from multiple threads
+- **Message Crawler**: Built-in support for crawling and exporting cast and reaction messages to Parquet files
+
+## Message Crawler
+
+The HubClient includes a high-performance message crawler that can export both cast messages and reactions to Parquet files. The crawler processes FIDs from 1M down to 1, collecting all messages and storing them in an optimized format.
+
+### Usage
+
+```bash
+# Crawl cast messages (default)
+dotnet run
+
+# Explicitly specify cast messages
+dotnet run --type casts
+
+# Crawl reaction messages
+dotnet run --type reactions
+```
+
+### Output Structure
+
+The crawler creates the following directory structure:
+
+```
+output/
+├── casts/
+│   └── casts_messages/      # Parquet files containing cast messages
+└── reactions/
+    └── reactions_messages/  # Parquet files containing reaction messages
+```
+
+### Data Schema
+
+#### Cast Messages
+Fields stored for each cast message:
+- `Fid`: The Farcaster ID of the message creator
+- `MessageType`: Type of the message (CastAdd/CastRemove)
+- `Timestamp`: When the message was created
+- `Hash`: Unique hash of the message
+- `SignatureScheme`: Signature scheme used
+- `Signature`: Message signature
+- `Signer`: Public key of the signer
+- `Text`: Content of the cast (for CastAdd)
+- `Mentions`: Comma-separated list of mentioned FIDs
+- `ParentCastId`: ID of the parent cast if this is a reply
+- `ParentUrl`: URL being replied to (if any)
+- `Embeds`: Pipe-separated list of embedded content
+- `TargetHash`: Hash of the cast being removed (for CastRemove)
+
+#### Reaction Messages
+Fields stored for each reaction:
+- `Fid`: The Farcaster ID of the reactor
+- `MessageType`: Type of the message (ReactionAdd/ReactionRemove)
+- `Timestamp`: When the reaction was created
+- `Hash`: Unique hash of the message
+- `SignatureScheme`: Signature scheme used
+- `Signature`: Message signature
+- `Signer`: Public key of the signer
+- `ReactionType`: Type of reaction (like/recast)
+- `TargetCastId`: ID of the cast being reacted to
+- `TargetUrl`: URL being reacted to (if any)
+
+### Performance Characteristics
+
+The crawler is optimized for high-throughput processing:
+- Uses 8 managed channels with 500 concurrent calls per channel
+- Implements efficient pagination with 100 messages per page
+- Periodically flushes data to disk (every 1000 FIDs)
+- Provides detailed progress tracking and time estimates
+- Handles errors gracefully with automatic retries
+
+### Example Output
+
+```
+Starting HubClient cast message crawler - processing all FIDs from 1M down to 1...
+Progress: 25.50% complete | Current: FID 750000 | Stats: 1234 active FIDs, 56789 total cast messages | Time: 45.2 minutes elapsed, ~131.8 minutes remaining
+```
 
 ## Performance Optimizations
 

@@ -1,13 +1,22 @@
 # A Fast Farcaster Hub Client
 
 ## Usage
-```
+```bash
+# Download all casts (default)
 dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release
+
+# Explicitly specify cast messages
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --type casts
+
+# Download all reactions
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --type reactions
 ```
 
-This will start downloading all casts to outputs/casts/cast_messages/
+This will start downloading all messages to:
+- Casts: `outputs/casts/cast_messages/`
+- Reactions: `outputs/reactions/reaction_messages/`
 
-If you want to update it to only pull a specific person's casts, or to call a different grpc call like get profile information or identity proofs, please update HubClient.Production/Program.cs
+If you want to update it to only pull a specific person's data, or to call a different gRPC call like get profile information or identity proofs, please update HubClient.Production/Program.cs
 
 ## Intro
 
@@ -15,15 +24,18 @@ Hi, I needed every cast on Farcaster on my computer for analysis, well, need is 
 
 Then I tried using the clients I could find but they were painfully slow, so I said "i wonder if .net is a good solution for this cause it has a good concurrency story" -- that was the end of my coding contributions to this repo, the rest was done by my good friend Claude with some shoulder watching and occasional help from me.
 
-As of 2/28/2025, this repo can pull all every cast from every user FID 1 million and below (157 mil casts excluding deleted casts) in 69.4 minutes.
+As of 2/28/2025, this repo can pull:
+- All casts from every user FID 1 million and below (157 mil casts excluding deleted casts) in 69.4 minutes
+- All reactions (likes and recasts) with similar performance characteristics
 
 How we approached this can be found in IMPLEMENTATION_STEPS.md which we used as the roadmap for the project. The main approach was to try different parts of the pipeline, profile them, pick the best one and move onto the next part.
 
 It was actually quite fun! The highlights are:
 
-- When connected to a Hub on the same machine: can pull data at 30k grpc messages a second.
+- When connected to a Hub on the same machine: can pull data at 30k gRPC messages a second.
 - Configurable to optimize whatever your machine has the most of, RAM, disk space, etc.
 - Writes directly to parquet files making storage tiny and compatible with a whole ecosystem of tools
+- Supports both cast messages and reactions with the same high-performance characteristics
 
 If you're interested in the process that went into putting this together, I (mostly Claude) first made [minimal-hub-server](https://github.com/jc4p/minimal-hub-server) to have a local testing environment that wouldn't need the storage space a real hub needs.
 

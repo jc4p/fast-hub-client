@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using System.CommandLine;
+using System.CommandLine.Invocation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
@@ -61,9 +63,32 @@ namespace HubClient.Production
     
     public class Program
     {
-        public static async Task Main(string[] args)
+        public static async Task<int> Main(string[] args)
         {
-            Console.WriteLine("Starting HubClient cast message crawler - processing all FIDs from 1M down to 1...");
+            // Create command line options
+            var rootCommand = new RootCommand("HubClient cast and reaction message crawler");
+            
+            var messageTypeOption = new Option<string>(
+                "--type",
+                getDefaultValue: () => "casts",
+                description: "Type of messages to crawl (casts or reactions)"
+            );
+            rootCommand.AddOption(messageTypeOption);
+            
+            rootCommand.SetHandler(async (string messageType) =>
+            {
+                await RunCrawler(messageType);
+            }, messageTypeOption);
+            
+            return await rootCommand.InvokeAsync(args);
+        }
+        
+        private static async Task RunCrawler(string messageType)
+        {
+            bool isCastMessages = messageType.ToLower() == "casts";
+            string messageTypeDisplay = isCastMessages ? "cast" : "reaction";
+            
+            Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing all FIDs from 1M down to 1...");
             
             // Set up logging
             var serviceProvider = new ServiceCollection()
@@ -100,15 +125,15 @@ namespace HubClient.Production
                 
                 // 2. Set up storage to save to parquet file
                 var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "output");
-                var castsDir = Path.Combine(outputDir, "casts");
-                Directory.CreateDirectory(castsDir);
+                var dataDir = Path.Combine(outputDir, messageType.ToLower());
+                Directory.CreateDirectory(dataDir);
                 
                 // Create schema generator and storage factory
                 var schemaGenerator = new DefaultSchemaGenerator();
                 var storageFactory = new OptimizedStorageFactory(
                     loggerFactory,
                     schemaGenerator,
-                    castsDir);
+                    dataDir);
                 
                 // Define message converter for the response messages
                 Func<Message, IDictionary<string, object>> messageConverter = message =>
@@ -117,6 +142,7 @@ namespace HubClient.Production
                     string messageType = message.Data?.Type.ToString() ?? "Unknown";
                     bool hasCastAddBody = message.Data?.CastAddBody != null;
                     bool hasCastRemoveBody = message.Data?.CastRemoveBody != null;
+                    bool hasReactionBody = message.Data?.ReactionBody != null;
                     
                     // Critical debugging for MESSAGE_TYPE_CAST_ADD messages
                     if (message.Data?.Type == MessageType.CastAdd)
@@ -133,6 +159,14 @@ namespace HubClient.Production
                             logger.LogDebug("DataBytes found for CAST_ADD message, might need to parse manually");
                         }
                     }
+                    else if (message.Data?.Type == MessageType.ReactionAdd || message.Data?.Type == MessageType.ReactionRemove)
+                    {
+                        logger.LogDebug(
+                            "REACTION Message: Hash={Hash}, HasReactionBody={HasReactionBody}, Type={Type}", 
+                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            hasReactionBody,
+                            message.Data.Type);
+                    }
                     
                     var dict = new Dictionary<string, object>
                     {
@@ -146,38 +180,57 @@ namespace HubClient.Production
                     };
                     
                     // Initialize all fields to empty strings to ensure consistent schema across all records
-                    // CastAdd specific fields
-                    dict["Text"] = "";
-                    dict["Mentions"] = "";
-                    dict["ParentCastId"] = "";
-                    dict["ParentUrl"] = "";
-                    dict["Embeds"] = "";
-                    
-                    // CastRemove specific fields
-                    dict["TargetHash"] = "";
-                    
-                    // Add CastAddBody specific properties if available
-                    if (message.Data?.CastAddBody != null)
+                    if (isCastMessages)
                     {
-                        logger.LogDebug("CastAddBody details: Text length={TextLength}, Mentions={MentionsCount}, ParentUrl={HasParentUrl}",
-                            message.Data.CastAddBody.Text?.Length ?? 0,
-                            message.Data.CastAddBody.Mentions?.Count ?? 0,
-                            !string.IsNullOrEmpty(message.Data.CastAddBody.ParentUrl));
-                            
-                        dict["Text"] = message.Data.CastAddBody.Text;
-                        dict["Mentions"] = string.Join(",", message.Data.CastAddBody.Mentions);
-                        dict["ParentCastId"] = message.Data.CastAddBody.ParentCastId != null ? 
-                            $"{message.Data.CastAddBody.ParentCastId.Fid}:{Convert.ToBase64String(message.Data.CastAddBody.ParentCastId.Hash.ToByteArray())}" : "";
-                        dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl;
-                        dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ? 
-                            string.Join("|", message.Data.CastAddBody.Embeds) : "";
+                        // CastAdd specific fields
+                        dict["Text"] = "";
+                        dict["Mentions"] = "";
+                        dict["ParentCastId"] = "";
+                        dict["ParentUrl"] = "";
+                        dict["Embeds"] = "";
+                        
+                        // CastRemove specific fields
+                        dict["TargetHash"] = "";
+                        
+                        // Add CastAddBody specific properties if available
+                        if (message.Data?.CastAddBody != null)
+                        {
+                            logger.LogDebug("CastAddBody details: Text length={TextLength}, Mentions={MentionsCount}, ParentUrl={HasParentUrl}",
+                                message.Data.CastAddBody.Text?.Length ?? 0,
+                                message.Data.CastAddBody.Mentions?.Count ?? 0,
+                                !string.IsNullOrEmpty(message.Data.CastAddBody.ParentUrl));
+                                
+                            dict["Text"] = message.Data.CastAddBody.Text;
+                            dict["Mentions"] = string.Join(",", message.Data.CastAddBody.Mentions);
+                            dict["ParentCastId"] = message.Data.CastAddBody.ParentCastId != null ? 
+                                $"{message.Data.CastAddBody.ParentCastId.Fid}:{Convert.ToBase64String(message.Data.CastAddBody.ParentCastId.Hash.ToByteArray())}" : "";
+                            dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl;
+                            dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ? 
+                                string.Join("|", message.Data.CastAddBody.Embeds) : "";
+                        }
+                        
+                        // Add CastRemoveBody specific properties if available
+                        if (message.Data?.CastRemoveBody != null)
+                        {
+                            dict["TargetHash"] = message.Data.CastRemoveBody.TargetHash != null ? 
+                                Convert.ToBase64String(message.Data.CastRemoveBody.TargetHash.ToByteArray()) : "";
+                        }
                     }
-                    
-                    // Add CastRemoveBody specific properties if available
-                    if (message.Data?.CastRemoveBody != null)
+                    else
                     {
-                        dict["TargetHash"] = message.Data.CastRemoveBody.TargetHash != null ? 
-                            Convert.ToBase64String(message.Data.CastRemoveBody.TargetHash.ToByteArray()) : "";
+                        // Reaction specific fields
+                        dict["ReactionType"] = "";
+                        dict["TargetCastId"] = "";
+                        dict["TargetUrl"] = "";
+                        
+                        // Add ReactionBody specific properties if available
+                        if (message.Data?.ReactionBody != null)
+                        {
+                            dict["ReactionType"] = message.Data.ReactionBody.Type.ToString();
+                            dict["TargetCastId"] = message.Data.ReactionBody.TargetCastId != null ? 
+                                $"{message.Data.ReactionBody.TargetCastId.Fid}:{Convert.ToBase64String(message.Data.ReactionBody.TargetCastId.Hash.ToByteArray())}" : "";
+                            dict["TargetUrl"] = message.Data.ReactionBody.TargetUrl;
+                        }
                     }
                     
                     return dict;
@@ -185,7 +238,7 @@ namespace HubClient.Production
                 
                 // Create a high-throughput storage solution for the massive dataset
                 var storage = storageFactory.CreateHighThroughputStorage<Message>(
-                    "cast_messages",
+                    $"{messageType.ToLower()}_messages",
                     messageConverter);
                 
                 // Define FID range to process
@@ -194,7 +247,7 @@ namespace HubClient.Production
                 const uint progressInterval = 1000; // Report progress every 1000 FIDs
                 
                 logger.LogInformation($"Beginning to scan FIDs from {startFid} down to {endFid}");
-                logger.LogInformation($"All data will be saved to 'output/casts/cast_messages'");
+                logger.LogInformation($"All data will be saved to 'output/{messageType.ToLower()}/{messageType.ToLower()}_messages'");
                 
                 uint currentFid = startFid;
                 
@@ -239,8 +292,10 @@ namespace HubClient.Production
                             try
                             {
                                 response = await hubServiceClient.CallAsync(
-                                    async (client, ct) => await client.GetAllCastMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync,
-                                    $"GetAllCastMessagesByFid-{currentFid}-Page{pageCount}");
+                                    async (client, ct) => await (isCastMessages ? 
+                                        client.GetAllCastMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync :
+                                        client.GetAllReactionMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync),
+                                    $"GetAll{messageTypeDisplay}MessagesByFid-{currentFid}-Page{pageCount}");
                             }
                             catch (Exception ex)
                             {
@@ -281,7 +336,7 @@ namespace HubClient.Production
                             totalMessagesRetrieved += messagesForCurrentFid;
                             
                             fidStopwatch.Stop();
-                            logger.LogInformation($"FID {currentFid}: Retrieved {messagesForCurrentFid} messages in {fidStopwatch.ElapsedMilliseconds}ms");
+                            logger.LogInformation($"FID {currentFid}: Retrieved {messagesForCurrentFid} {messageTypeDisplay} messages in {fidStopwatch.ElapsedMilliseconds}ms");
                         }
                     }
                     catch (Exception ex)
@@ -307,7 +362,7 @@ namespace HubClient.Production
                         logger.LogInformation(
                             $"Progress: {progressPercent:F2}% complete | " +
                             $"Current: FID {currentFid} | " +
-                            $"Stats: {totalSuccessfulFids} active FIDs, {totalMessagesRetrieved} total messages | " +
+                            $"Stats: {totalSuccessfulFids} active FIDs, {totalMessagesRetrieved} total {messageTypeDisplay} messages | " +
                             $"Time: {elapsed.TotalMinutes:F1} minutes elapsed, ~{estimatedRemaining.TotalMinutes:F1} minutes remaining");
                         
                         // Flush storage periodically to ensure data is written
@@ -322,10 +377,10 @@ namespace HubClient.Production
                 totalStopwatch.Stop();
                 
                 logger.LogInformation($"Crawl complete! Processed {startFid - endFid + 1} FIDs");
-                logger.LogInformation($"Found {totalSuccessfulFids} active FIDs with a total of {totalMessagesRetrieved} cast messages");
+                logger.LogInformation($"Found {totalSuccessfulFids} active FIDs with a total of {totalMessagesRetrieved} {messageTypeDisplay} messages");
                 logger.LogInformation($"Failed to process {totalFailedFids} FIDs due to errors");
                 logger.LogInformation($"Total execution time: {totalStopwatch.Elapsed.TotalHours:F1} hours ({totalStopwatch.Elapsed.TotalMinutes:F1} minutes)");
-                logger.LogInformation($"Data has been saved to the 'output/casts/cast_messages' directory");
+                logger.LogInformation($"Data has been saved to the 'output/{messageType.ToLower()}/{messageType.ToLower()}_messages' directory");
             }
             catch (Exception ex)
             {
@@ -337,7 +392,7 @@ namespace HubClient.Production
                 
                 logger.LogError(ex, "A critical error occurred during the FID crawling process");
                 logger.LogInformation($"Total execution time before error: {totalStopwatch.Elapsed.TotalHours:F1} hours ({totalStopwatch.Elapsed.TotalMinutes:F1} minutes)");
-                logger.LogInformation($"Successfully processed {totalSuccessfulFids} FIDs with {totalMessagesRetrieved} total messages before failure");
+                logger.LogInformation($"Successfully processed {totalSuccessfulFids} FIDs with {totalMessagesRetrieved} total {messageTypeDisplay} messages before failure");
             }
         }
     }
