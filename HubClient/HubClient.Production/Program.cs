@@ -63,32 +63,57 @@ namespace HubClient.Production
     
     public class Program
     {
+        // Constant for "mine" FID
+        private const uint MY_FID = 977233;
+        
         public static async Task<int> Main(string[] args)
         {
             // Create command line options
-            var rootCommand = new RootCommand("HubClient cast and reaction message crawler");
+            var rootCommand = new RootCommand("HubClient cast, reaction, and link message crawler");
             
             var messageTypeOption = new Option<string>(
                 "--type",
                 getDefaultValue: () => "casts",
-                description: "Type of messages to crawl (casts or reactions)"
+                description: "Type of messages to crawl (casts, reactions, or links)"
             );
             rootCommand.AddOption(messageTypeOption);
             
-            rootCommand.SetHandler(async (string messageType) =>
+            var mineOption = new Option<bool>(
+                "--mine",
+                getDefaultValue: () => false,
+                description: "Only get messages for FID 977233"
+            );
+            rootCommand.AddOption(mineOption);
+            
+            rootCommand.SetHandler(async (string messageType, bool mine) =>
             {
-                await RunCrawler(messageType);
-            }, messageTypeOption);
+                await RunCrawler(messageType, mine);
+            }, messageTypeOption, mineOption);
             
             return await rootCommand.InvokeAsync(args);
         }
         
-        private static async Task RunCrawler(string messageType)
+        private static async Task RunCrawler(string messageType, bool mine)
         {
             bool isCastMessages = messageType.ToLower() == "casts";
-            string messageTypeDisplay = isCastMessages ? "cast" : "reaction";
+            bool isReactionMessages = messageType.ToLower() == "reactions";
+            bool isLinkMessages = messageType.ToLower() == "links";
             
-            Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing all FIDs from 1M down to 1...");
+            string messageTypeDisplay = isCastMessages ? "cast" : 
+                                       isReactionMessages ? "reaction" : 
+                                       isLinkMessages ? "link" : "unknown";
+            
+            if (!isCastMessages && !isReactionMessages && !isLinkMessages)
+            {
+                Console.WriteLine($"Unsupported message type: {messageType}. Please use casts, reactions, or links.");
+                return;
+            }
+            
+            uint startFid = mine ? MY_FID : 1_000_000;
+            uint endFid = mine ? MY_FID : 1;
+            
+            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1M down to 1";
+            Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
             
             // Set up logging
             var serviceProvider = new ServiceCollection()
@@ -143,6 +168,7 @@ namespace HubClient.Production
                     bool hasCastAddBody = message.Data?.CastAddBody != null;
                     bool hasCastRemoveBody = message.Data?.CastRemoveBody != null;
                     bool hasReactionBody = message.Data?.ReactionBody != null;
+                    bool hasLinkBody = message.Data?.LinkBody != null;
                     
                     // Critical debugging for MESSAGE_TYPE_CAST_ADD messages
                     if (message.Data?.Type == MessageType.CastAdd)
@@ -165,6 +191,14 @@ namespace HubClient.Production
                             "REACTION Message: Hash={Hash}, HasReactionBody={HasReactionBody}, Type={Type}", 
                             Convert.ToBase64String(message.Hash.ToByteArray()),
                             hasReactionBody,
+                            message.Data.Type);
+                    }
+                    else if (message.Data?.Type == MessageType.LinkAdd || message.Data?.Type == MessageType.LinkRemove)
+                    {
+                        logger.LogDebug(
+                            "LINK Message: Hash={Hash}, HasLinkBody={HasLinkBody}, Type={Type}", 
+                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            hasLinkBody,
                             message.Data.Type);
                     }
                     
@@ -216,7 +250,7 @@ namespace HubClient.Production
                                 Convert.ToBase64String(message.Data.CastRemoveBody.TargetHash.ToByteArray()) : "";
                         }
                     }
-                    else
+                    else if (isReactionMessages)
                     {
                         // Reaction specific fields
                         dict["ReactionType"] = "";
@@ -232,6 +266,21 @@ namespace HubClient.Production
                             dict["TargetUrl"] = message.Data.ReactionBody.TargetUrl;
                         }
                     }
+                    else if (isLinkMessages)
+                    {
+                        // Link specific fields
+                        dict["LinkType"] = "";
+                        dict["TargetFid"] = "";
+                        dict["DisplayTimestamp"] = "";
+                        
+                        // Add LinkBody specific properties if available
+                        if (message.Data?.LinkBody != null)
+                        {
+                            dict["LinkType"] = message.Data.LinkBody.Type;
+                            dict["TargetFid"] = message.Data.LinkBody.TargetFid.ToString();
+                            dict["DisplayTimestamp"] = message.Data.LinkBody.DisplayTimestamp.ToString();
+                        }
+                    }
                     
                     return dict;
                 };
@@ -241,9 +290,7 @@ namespace HubClient.Production
                     $"{messageType.ToLower()}_messages",
                     messageConverter);
                 
-                // Define FID range to process
-                const uint startFid = 1_000_000;
-                const uint endFid = 1;
+                // Define FID range to process (modified by --mine flag)
                 const uint progressInterval = 1000; // Report progress every 1000 FIDs
                 
                 logger.LogInformation($"Beginning to scan FIDs from {startFid} down to {endFid}");
@@ -292,9 +339,17 @@ namespace HubClient.Production
                             try
                             {
                                 response = await hubServiceClient.CallAsync(
-                                    async (client, ct) => await (isCastMessages ? 
-                                        client.GetAllCastMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync :
-                                        client.GetAllReactionMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync),
+                                    async (client, ct) => {
+                                        if (isCastMessages) {
+                                            return await client.GetAllCastMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
+                                        }
+                                        else if (isReactionMessages) {
+                                            return await client.GetAllReactionMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
+                                        }
+                                        else { // isLinkMessages
+                                            return await client.GetAllLinkMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
+                                        }
+                                    },
                                     $"GetAll{messageTypeDisplay}MessagesByFid-{currentFid}-Page{pageCount}");
                             }
                             catch (Exception ex)
@@ -349,7 +404,7 @@ namespace HubClient.Production
                     currentFid--;
                     
                     // Report progress periodically
-                    if (currentFid % progressInterval == 0 || currentFid == endFid)
+                    if ((currentFid % progressInterval == 0 || currentFid == endFid) && !mine)
                     {
                         // Calculate progress percentage
                         double progressPercent = 100.0 * (startFid - currentFid) / (startFid - endFid);

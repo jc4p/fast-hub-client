@@ -10,11 +10,18 @@ dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release
 
 # Download all reactions
 dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --type reactions
+
+# Download all links
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --type links
+
+# Only download messages for a specific FID (977233)
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --type links --mine
 ```
 
 This will start downloading all messages to:
 - Casts: `outputs/casts/cast_messages/`
 - Reactions: `outputs/reactions/reaction_messages/`
+- Links: `outputs/links/link_messages/`
 
 If you want to update it to only pull a specific person's data, or to call a different gRPC call like get profile information or identity proofs, please update HubClient.Production/Program.cs
 
@@ -27,6 +34,7 @@ Then I tried using the clients I could find but they were painfully slow, so I s
 As of 2/28/2025, this repo can pull:
 - All casts from every user FID 1 million and below (157 mil casts excluding deleted casts) in 69.4 minutes
 - All reactions (likes and recasts) with similar performance characteristics
+- All links between users with the same high-performance design
 
 How we approached this can be found in IMPLEMENTATION_STEPS.md which we used as the roadmap for the project. The main approach was to try different parts of the pipeline, profile them, pick the best one and move onto the next part.
 
@@ -35,7 +43,7 @@ It was actually quite fun! The highlights are:
 - When connected to a Hub on the same machine: can pull data at 30k gRPC messages a second.
 - Configurable to optimize whatever your machine has the most of, RAM, disk space, etc.
 - Writes directly to parquet files making storage tiny and compatible with a whole ecosystem of tools
-- Supports both cast messages and reactions with the same high-performance characteristics
+- Supports cast messages, reactions, and links with the same high-performance characteristics
 
 If you're interested in the process that went into putting this together, I (mostly Claude) first made [minimal-hub-server](https://github.com/jc4p/minimal-hub-server) to have a local testing environment that wouldn't need the storage space a real hub needs.
 
