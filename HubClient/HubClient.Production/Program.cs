@@ -322,7 +322,7 @@ namespace HubClient.Production
                             string userDataTypeStr = "";
                             switch (message.Data.UserDataBody.Type)
                             {
-                                case UserDataType.PFP:
+                                case UserDataType.Pfp:
                                     userDataTypeStr = "Profile Picture";
                                     break;
                                 case UserDataType.Display:
