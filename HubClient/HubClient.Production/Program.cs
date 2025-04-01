@@ -69,12 +69,12 @@ namespace HubClient.Production
         public static async Task<int> Main(string[] args)
         {
             // Create command line options
-            var rootCommand = new RootCommand("HubClient cast, reaction, and link message crawler");
+            var rootCommand = new RootCommand("HubClient cast, reaction, link, and profile message crawler");
             
             var messageTypeOption = new Option<string>(
                 "--type",
                 getDefaultValue: () => "casts",
-                description: "Type of messages to crawl (casts, reactions, or links)"
+                description: "Type of messages to crawl (casts, reactions, links)"
             );
             rootCommand.AddOption(messageTypeOption);
             
@@ -85,10 +85,24 @@ namespace HubClient.Production
             );
             rootCommand.AddOption(mineOption);
             
-            rootCommand.SetHandler(async (string messageType, bool mine) =>
+            var profilesOption = new Option<bool>(
+                "--profiles",
+                getDefaultValue: () => false,
+                description: "Get user profile data instead of message content"
+            );
+            rootCommand.AddOption(profilesOption);
+            
+            rootCommand.SetHandler(async (string messageType, bool mine, bool profiles) =>
             {
-                await RunCrawler(messageType, mine);
-            }, messageTypeOption, mineOption);
+                if (profiles)
+                {
+                    await RunCrawler("profiles", mine);
+                }
+                else
+                {
+                    await RunCrawler(messageType, mine);
+                }
+            }, messageTypeOption, mineOption, profilesOption);
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -98,21 +112,23 @@ namespace HubClient.Production
             bool isCastMessages = messageType.ToLower() == "casts";
             bool isReactionMessages = messageType.ToLower() == "reactions";
             bool isLinkMessages = messageType.ToLower() == "links";
+            bool isProfileMessages = messageType.ToLower() == "profiles";
             
             string messageTypeDisplay = isCastMessages ? "cast" : 
                                        isReactionMessages ? "reaction" : 
-                                       isLinkMessages ? "link" : "unknown";
+                                       isLinkMessages ? "link" :
+                                       isProfileMessages ? "profile" : "unknown";
             
-            if (!isCastMessages && !isReactionMessages && !isLinkMessages)
+            if (!isCastMessages && !isReactionMessages && !isLinkMessages && !isProfileMessages)
             {
-                Console.WriteLine($"Unsupported message type: {messageType}. Please use casts, reactions, or links.");
+                Console.WriteLine($"Unsupported message type: {messageType}. Please use casts, reactions, links, or profiles.");
                 return;
             }
             
-            uint startFid = mine ? MY_FID : 1_000_000;
+            uint startFid = mine ? MY_FID : 1_043_388;
             uint endFid = mine ? MY_FID : 1;
             
-            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1M down to 1";
+            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1,043,388 down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
             
             // Set up logging
@@ -169,6 +185,7 @@ namespace HubClient.Production
                     bool hasCastRemoveBody = message.Data?.CastRemoveBody != null;
                     bool hasReactionBody = message.Data?.ReactionBody != null;
                     bool hasLinkBody = message.Data?.LinkBody != null;
+                    bool hasUserDataBody = message.Data?.UserDataBody != null;
                     
                     // Critical debugging for MESSAGE_TYPE_CAST_ADD messages
                     if (message.Data?.Type == MessageType.CastAdd)
@@ -199,6 +216,14 @@ namespace HubClient.Production
                             "LINK Message: Hash={Hash}, HasLinkBody={HasLinkBody}, Type={Type}", 
                             Convert.ToBase64String(message.Hash.ToByteArray()),
                             hasLinkBody,
+                            message.Data.Type);
+                    }
+                    else if (message.Data?.Type == MessageType.UserDataAdd)
+                    {
+                        logger.LogDebug(
+                            "USER_DATA Message: Hash={Hash}, HasUserDataBody={HasUserDataBody}, Type={Type}", 
+                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            hasUserDataBody,
                             message.Data.Type);
                     }
                     
@@ -281,6 +306,41 @@ namespace HubClient.Production
                             dict["DisplayTimestamp"] = message.Data.LinkBody.DisplayTimestamp.ToString();
                         }
                     }
+                    else if (isProfileMessages)
+                    {
+                        // UserData specific fields
+                        dict["UserDataType"] = "";
+                        dict["Value"] = "";
+                        
+                        // Add UserDataBody specific properties if available
+                        if (message.Data?.UserDataBody != null)
+                        {
+                            dict["UserDataType"] = message.Data.UserDataBody.Type.ToString();
+                            dict["Value"] = message.Data.UserDataBody.Value;
+                            
+                            // Add human-readable user data type
+                            string userDataTypeStr = "";
+                            switch (message.Data.UserDataBody.Type)
+                            {
+                                case UserDataType.PFP:
+                                    userDataTypeStr = "Profile Picture";
+                                    break;
+                                case UserDataType.Display:
+                                    userDataTypeStr = "Display Name";
+                                    break;
+                                case UserDataType.Bio:
+                                    userDataTypeStr = "Bio";
+                                    break;
+                                case UserDataType.Url:
+                                    userDataTypeStr = "URL";
+                                    break;
+                                default:
+                                    userDataTypeStr = "Unknown";
+                                    break;
+                            }
+                            dict["UserDataTypeReadable"] = userDataTypeStr;
+                        }
+                    }
                     
                     return dict;
                 };
@@ -346,8 +406,11 @@ namespace HubClient.Production
                                         else if (isReactionMessages) {
                                             return await client.GetAllReactionMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
                                         }
-                                        else { // isLinkMessages
+                                        else if (isLinkMessages) {
                                             return await client.GetAllLinkMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
+                                        }
+                                        else { // isProfileMessages
+                                            return await client.GetAllUserDataMessagesByFidAsync(request, cancellationToken: ct).ResponseAsync;
                                         }
                                     },
                                     $"GetAll{messageTypeDisplay}MessagesByFid-{currentFid}-Page{pageCount}");
