@@ -38,7 +38,7 @@ COPY (
     AND l.LinkType = e.LinkType
     AND l.TimestampInt = e.MaxTimestamp
   WHERE l.MessageType = 'LinkAdd'
-) TO 'farcaster_links.parquet';
+) TO 'farcaster_links.parquet' (FORMAT PARQUET, COMPRESSION ZSTD);
 
 -- Clean up
 DROP TABLE all_link_events;

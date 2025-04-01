@@ -10,7 +10,7 @@ COPY (
   FROM read_parquet('output/casts/casts_messages/*.parquet') c
   WHERE c.MessageType = 'CastAdd'
   AND c.Hash NOT IN (SELECT TargetHash FROM removed_casts)
-) TO 'farcaster_casts.parquet';
+) TO 'farcaster_casts.parquet' (FORMAT PARQUET, COMPRESSION ZSTD);
 
 -- Drop the temporary table
 DROP TABLE removed_casts;

@@ -38,7 +38,7 @@ COPY (
     AND r.ReactionType = e.ReactionType
     AND r.TimestampInt = e.MaxTimestamp
   WHERE r.MessageType = 'ReactionAdd'
-) TO 'farcaster_reactions.parquet';
+) TO 'farcaster_reactions.parquet' (FORMAT PARQUET, COMPRESSION ZSTD);
 
 -- Clean up
 DROP TABLE all_reaction_events;
