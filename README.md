@@ -39,7 +39,7 @@ Hi, I needed every cast on Farcaster on my computer for analysis, well, need is 
 Then I tried using the clients I could find but they were painfully slow, so I said "i wonder if .net is a good solution for this cause it has a good concurrency story" -- that was the end of my coding contributions to this repo, the rest was done by my good friend Claude with some shoulder watching and occasional help from me.
 
 As of 3/31/2025, this repo can pull:
-- All casts from every user FID 1,043,388 and below (157 mil casts excluding deleted casts) in 69.4 minutes
+- All casts from every user FID 1,050,000 and below (157 mil casts excluding deleted casts) in 69.4 minutes
 - All reactions (likes and recasts) with similar performance characteristics
 - All links between users with the same high-performance design
 - All user profile data (display names, profile pictures, bios, URLs)
@@ -120,7 +120,7 @@ Benchmarks are implemented using BenchmarkDotNet for reliable, repeatable perfor
 # Build the solution
 dotnet build
 
-# Run the client (crawls messages from FID 1,043,388 down to 1)
+# Run the client (crawls messages from FID 1,050,000 down to 1)
 cd HubClient/HubClient.Production
 dotnet run
 ```

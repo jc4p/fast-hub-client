@@ -125,10 +125,10 @@ namespace HubClient.Production
                 return;
             }
             
-            uint startFid = mine ? MY_FID : 1_043_388;
+            uint startFid = mine ? MY_FID : 1_050_000;
             uint endFid = mine ? MY_FID : 1;
             
-            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1,043,388 down to 1";
+            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1,050,000 down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
             
             // Set up logging
