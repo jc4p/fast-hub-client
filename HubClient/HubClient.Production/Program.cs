@@ -63,8 +63,6 @@ namespace HubClient.Production
     
     public class Program
     {
-        // Constant for "mine" FID
-        private const uint MY_FID = 977233;
         
         public static async Task<int> Main(string[] args)
         {
@@ -78,12 +76,12 @@ namespace HubClient.Production
             );
             rootCommand.AddOption(messageTypeOption);
             
-            var mineOption = new Option<bool>(
-                "--mine",
-                getDefaultValue: () => false,
-                description: "Only get messages for FID 977233"
+            var fidOption = new Option<uint?>(
+                "--fid",
+                getDefaultValue: () => null,
+                description: "Only get messages for specified FID (e.g. --fid 977233)"
             );
-            rootCommand.AddOption(mineOption);
+            rootCommand.AddOption(fidOption);
             
             var profilesOption = new Option<bool>(
                 "--profiles",
@@ -92,22 +90,22 @@ namespace HubClient.Production
             );
             rootCommand.AddOption(profilesOption);
             
-            rootCommand.SetHandler(async (string messageType, bool mine, bool profiles) =>
+            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles) =>
             {
                 if (profiles)
                 {
-                    await RunCrawler("profiles", mine);
+                    await RunCrawler("profiles", fid);
                 }
                 else
                 {
-                    await RunCrawler(messageType, mine);
+                    await RunCrawler(messageType, fid);
                 }
-            }, messageTypeOption, mineOption, profilesOption);
+            }, messageTypeOption, fidOption, profilesOption);
             
             return await rootCommand.InvokeAsync(args);
         }
         
-        private static async Task RunCrawler(string messageType, bool mine)
+        private static async Task RunCrawler(string messageType, uint? specificFid)
         {
             bool isCastMessages = messageType.ToLower() == "casts";
             bool isReactionMessages = messageType.ToLower() == "reactions";
@@ -125,10 +123,11 @@ namespace HubClient.Production
                 return;
             }
             
-            uint startFid = mine ? MY_FID : 1_050_000;
-            uint endFid = mine ? MY_FID : 1;
+            bool isSingleFid = specificFid.HasValue;
+            uint startFid = isSingleFid ? specificFid.Value : 1_050_000;
+            uint endFid = isSingleFid ? specificFid.Value : 1;
             
-            string scopeDisplay = mine ? $"for FID {MY_FID}" : "from 1,050,000 down to 1";
+            string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from 1,050,000 down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
             
             // Set up logging
@@ -467,7 +466,7 @@ namespace HubClient.Production
                     currentFid--;
                     
                     // Report progress periodically
-                    if ((currentFid % progressInterval == 0 || currentFid == endFid) && !mine)
+                    if ((currentFid % progressInterval == 0 || currentFid == endFid) && !isSingleFid)
                     {
                         // Calculate progress percentage
                         double progressPercent = 100.0 * (startFid - currentFid) / (startFid - endFid);

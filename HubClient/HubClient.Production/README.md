@@ -26,6 +26,12 @@ dotnet run --type casts
 
 # Crawl reaction messages
 dotnet run --type reactions
+
+# Crawl messages for a specific FID
+dotnet run --fid 977233
+
+# Crawl profile data for a specific FID
+dotnet run --profiles --fid 977233
 ```
 
 ### Output Structure
@@ -83,8 +89,13 @@ The crawler is optimized for high-throughput processing:
 ### Example Output
 
 ```
-Starting HubClient cast message crawler - processing all FIDs from 1M down to 1...
+# For full crawl:
+Starting HubClient cast message crawler - processing from 1,050,000 down to 1...
 Progress: 25.50% complete | Current: FID 750000 | Stats: 1234 active FIDs, 56789 total cast messages | Time: 45.2 minutes elapsed, ~131.8 minutes remaining
+
+# For specific FID:
+Starting HubClient cast message crawler - processing for FID 977233...
+FID 977233: Retrieved 412 cast messages in 1523ms
 ```
 
 ## Performance Optimizations
