@@ -89,23 +89,30 @@ namespace HubClient.Production
                 description: "Get user profile data instead of message content"
             );
             rootCommand.AddOption(profilesOption);
-            
-            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles) =>
+
+            var daysOption = new Option<int?>(
+                "--days",
+                getDefaultValue: () => null,
+                description: "Only get messages from the last N days (e.g. --days 30). By default gets all messages."
+            );
+            rootCommand.AddOption(daysOption);
+
+            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days) =>
             {
                 if (profiles)
                 {
-                    await RunCrawler("profiles", fid);
+                    await RunCrawler("profiles", fid, days);
                 }
                 else
                 {
-                    await RunCrawler(messageType, fid);
+                    await RunCrawler(messageType, fid, days);
                 }
-            }, messageTypeOption, fidOption, profilesOption);
+            }, messageTypeOption, fidOption, profilesOption, daysOption);
             
             return await rootCommand.InvokeAsync(args);
         }
         
-        private static async Task RunCrawler(string messageType, uint? specificFid)
+        private static async Task RunCrawler(string messageType, uint? specificFid, int? days)
         {
             bool isCastMessages = messageType.ToLower() == "casts";
             bool isReactionMessages = messageType.ToLower() == "reactions";
@@ -126,9 +133,17 @@ namespace HubClient.Production
             bool isSingleFid = specificFid.HasValue;
             uint startFid = isSingleFid ? specificFid.Value : 1_050_000;
             uint endFid = isSingleFid ? specificFid.Value : 1;
-            
+
             string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from 1,050,000 down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
+
+            ulong? startTimestamp = null;
+            if (days.HasValue)
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-days.Value);
+                startTimestamp = (ulong)new DateTimeOffset(cutoff).ToUnixTimeSeconds();
+                Console.WriteLine($"Filtering messages to the last {days.Value} days (starting {cutoff:yyyy-MM-dd})");
+            }
             
             // Set up logging
             var serviceProvider = new ServiceCollection()
@@ -379,10 +394,14 @@ namespace HubClient.Production
                             pageCount++;
                             
                             // Create the request with FID and pagination parameters
-                            var request = new FidTimestampRequest { 
+                            var request = new FidTimestampRequest {
                                 Fid = currentFid,
                                 PageSize = pageSize
                             };
+                            if (startTimestamp.HasValue)
+                            {
+                                request.StartTimestamp = startTimestamp.Value;
+                            }
                             
                             // Add page token if not the first page
                             if (pageToken != null)
@@ -421,16 +440,41 @@ namespace HubClient.Production
                             }
                             
                             int messageCount = response.Messages.Count;
-                            messagesForCurrentFid += messageCount;
-                            
+                            var messagesToStore = new List<Message>(messageCount);
+                            bool reachedCutoff = false;
+
+                            if (startTimestamp.HasValue)
+                            {
+                                ulong cutoff = startTimestamp.Value;
+                                foreach (var message in response.Messages)
+                                {
+                                    if (message.Data != null && message.Data.Timestamp >= cutoff)
+                                    {
+                                        messagesToStore.Add(message);
+                                    }
+                                    else
+                                    {
+                                        reachedCutoff = true;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                messagesToStore.AddRange(response.Messages);
+                            }
+
+                            messagesForCurrentFid += messagesToStore.Count;
+
                             // Write messages to storage
-                            foreach (var message in response.Messages)
+                            foreach (var message in messagesToStore)
                             {
                                 await storage.AddAsync(message);
                             }
-                            
-                            // Check if there are more messages
-                            if (response.NextPageToken != null && response.NextPageToken.Length > 0)
+
+                            // Determine if there are more messages
+                            bool hasNextToken = response.NextPageToken != null && response.NextPageToken.Length > 0;
+
+                            if (hasNextToken && !reachedCutoff)
                             {
                                 pageToken = response.NextPageToken.ToByteArray();
                             }
@@ -438,9 +482,9 @@ namespace HubClient.Production
                             {
                                 hasMoreMessages = false;
                             }
-                            
+
                             // If we didn't get any messages on the first page, no need to continue
-                            if (pageCount == 1 && messageCount == 0)
+                            if (pageCount == 1 && messagesToStore.Count == 0)
                             {
                                 break;
                             }

@@ -22,7 +22,12 @@ dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release
 
 # Only download profile data for a specific FID (977233)
 dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --profiles --mine
+
+# Only download messages from the last 30 days
+dotnet run --project HubClient.Production/HubClient.Production.csproj -c Release --days 30
 ```
+
+Pagination automatically stops when a page contains a message older than the cutoff time.
 
 This will start downloading all messages to:
 - Casts: `outputs/casts/cast_messages/`
