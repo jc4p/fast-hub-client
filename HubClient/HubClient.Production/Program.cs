@@ -89,23 +89,30 @@ namespace HubClient.Production
                 description: "Get user profile data instead of message content"
             );
             rootCommand.AddOption(profilesOption);
+
+            var daysOption = new Option<int?>(
+                "--days",
+                getDefaultValue: () => null,
+                description: "Number of days of messages to retrieve. If not specified, all messages are retrieved."
+            );
+            rootCommand.AddOption(daysOption);
             
-            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles) =>
+            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days) =>
             {
                 if (profiles)
                 {
-                    await RunCrawler("profiles", fid);
+                    await RunCrawler("profiles", fid, days);
                 }
                 else
                 {
-                    await RunCrawler(messageType, fid);
+                    await RunCrawler(messageType, fid, days);
                 }
-            }, messageTypeOption, fidOption, profilesOption);
+            }, messageTypeOption, fidOption, profilesOption, daysOption);
             
             return await rootCommand.InvokeAsync(args);
         }
         
-        private static async Task RunCrawler(string messageType, uint? specificFid)
+        private static async Task RunCrawler(string messageType, uint? specificFid, int? days)
         {
             bool isCastMessages = messageType.ToLower() == "casts";
             bool isReactionMessages = messageType.ToLower() == "reactions";
@@ -129,6 +136,15 @@ namespace HubClient.Production
             
             string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from 1,050,000 down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
+
+            long? cutoffTimestamp = null;
+            if (days.HasValue)
+            {
+                // Ensure 'days' is not negative, or decide how to handle it (e.g., treat as 0 or throw).
+                // For now, assume 'days' will be non-negative as per typical use case.
+                cutoffTimestamp = DateTimeOffset.UtcNow.AddDays(-days.Value).ToUnixTimeSeconds();
+                Console.WriteLine($"Filtering messages newer than {DateTimeOffset.FromUnixTimeSeconds(cutoffTimestamp.Value).DateTime} UTC ({days.Value} days ago).");
+            }
             
             // Set up logging
             var serviceProvider = new ServiceCollection()
@@ -156,7 +172,7 @@ namespace HubClient.Production
                 // 1. Create the client with increased concurrency for faster crawling
                 var options = new OptimizedHubClientOptions
                 {
-                    ServerEndpoint = "http://44.244.172.9:2283", // Updated Hub endpoint
+                    ServerEndpoint = "http://localhost:3383", // Updated Hub endpoint
                     ChannelCount = 8,
                     MaxConcurrentCallsPerChannel = 500
                 };
@@ -426,17 +442,36 @@ namespace HubClient.Production
                             // Write messages to storage
                             foreach (var message in response.Messages)
                             {
+                                // Skip messages older than the cutoffTimestamp, if specified
+                                if (cutoffTimestamp.HasValue && message.Data != null && message.Data.Timestamp < cutoffTimestamp.Value)
+                                {
+                                    continue; 
+                                }
                                 await storage.AddAsync(message);
                             }
+
+                            // Pagination optimization: Stop if a message on this page is older than the cutoff
+                            if (hasMoreMessages && cutoffTimestamp.HasValue) // Check hasMoreMessages to avoid re-evaluating if already false
+                            {
+                                foreach (var message in response.Messages)
+                                {
+                                    if (message.Data != null && message.Data.Timestamp < cutoffTimestamp.Value)
+                                    {
+                                        logger.LogInformation($"Stopping pagination for FID {currentFid} on page {pageCount}, message timestamp {message.Data.Timestamp} is older than cutoff {cutoffTimestamp.Value}.");
+                                        hasMoreMessages = false;
+                                        break; 
+                                    }
+                                }
+                            }
                             
-                            // Check if there are more messages
-                            if (response.NextPageToken != null && response.NextPageToken.Length > 0)
+                            // Check if there are more messages (original logic for advancing pageToken)
+                            if (hasMoreMessages && response.NextPageToken != null && response.NextPageToken.Length > 0)
                             {
                                 pageToken = response.NextPageToken.ToByteArray();
                             }
                             else
                             {
-                                hasMoreMessages = false;
+                                hasMoreMessages = false; // Ensure it's set if next page token is null/empty or optimization above set it
                             }
                             
                             // If we didn't get any messages on the first page, no need to continue
