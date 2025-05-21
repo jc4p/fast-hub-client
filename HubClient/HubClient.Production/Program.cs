@@ -63,6 +63,7 @@ namespace HubClient.Production
     
     public class Program
     {
+        private const long FarcasterEpochOffsetSeconds = 1609459200L;
         
         public static async Task<int> Main(string[] args)
         {
@@ -443,7 +444,7 @@ namespace HubClient.Production
                             foreach (var message in response.Messages)
                             {
                                 // Skip messages older than the cutoffTimestamp, if specified
-                                if (cutoffTimestamp.HasValue && message.Data != null && message.Data.Timestamp < cutoffTimestamp.Value)
+                                if (cutoffTimestamp.HasValue && message.Data != null && (message.Data.Timestamp + FarcasterEpochOffsetSeconds) < cutoffTimestamp.Value)
                                 {
                                     continue; 
                                 }
@@ -455,9 +456,9 @@ namespace HubClient.Production
                             {
                                 foreach (var message in response.Messages)
                                 {
-                                    if (message.Data != null && message.Data.Timestamp < cutoffTimestamp.Value)
+                                    if (message.Data != null && (message.Data.Timestamp + FarcasterEpochOffsetSeconds) < cutoffTimestamp.Value)
                                     {
-                                        logger.LogInformation($"Stopping pagination for FID {currentFid} on page {pageCount}, message timestamp {message.Data.Timestamp} is older than cutoff {cutoffTimestamp.Value}.");
+                                        logger.LogInformation($"Stopping pagination for FID {currentFid} on page {pageCount}, message Farcaster timestamp {message.Data.Timestamp} (Unix: {message.Data.Timestamp + FarcasterEpochOffsetSeconds}) is older than cutoff {cutoffTimestamp.Value}.");
                                         hasMoreMessages = false;
                                         break; 
                                     }
