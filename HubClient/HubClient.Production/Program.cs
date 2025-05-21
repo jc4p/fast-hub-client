@@ -172,7 +172,7 @@ namespace HubClient.Production
                 // 1. Create the client with increased concurrency for faster crawling
                 var options = new OptimizedHubClientOptions
                 {
-                    ServerEndpoint = "http://44.244.172.9:2283", // Updated Hub endpoint
+                    ServerEndpoint = "http://localhost:3383", // Updated Hub endpoint
                     ChannelCount = 8,
                     MaxConcurrentCallsPerChannel = 500
                 };
