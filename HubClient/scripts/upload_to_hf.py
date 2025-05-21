@@ -78,6 +78,23 @@ def upload_parquet_files():
             except Exception as e:
                 pbar.write(f"Error uploading {local_file}: {str(e)}")
             
+            # Upload corresponding README if it exists
+            # Derive local README filename based on parquet filename
+            local_readme = local_file.with_name(local_file.stem + "_README.md")
+            if local_readme.exists():
+                pbar.write(f"Uploading README {local_readme} to {upload['repo_id']}/README.md...")
+                try:
+                    url_readme = api.upload_file(
+                        path_or_fileobj=str(local_readme),
+                        path_in_repo="README.md",
+                        repo_id=upload["repo_id"],
+                        repo_type="dataset"
+                    )
+                    pbar.write(f"Successfully uploaded README to {url_readme}")
+                except Exception as re:
+                    pbar.write(f"Error uploading README {local_readme}: {re}")
+            else:
+                pbar.write(f"README {local_readme} not found, skipping README upload")
             pbar.update(1)
     
     print("\nUpload process completed")
