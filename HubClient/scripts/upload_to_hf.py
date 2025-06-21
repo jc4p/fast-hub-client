@@ -22,16 +22,16 @@ def upload_parquet_files():
             "repo_id": "jc4p/farcaster-casts",
             "repo_path": "casts.parquet"
         },
-        {
-            "local_file": "farcaster_links.parquet",
-            "repo_id": "jc4p/farcaster-links",
-            "repo_path": "farcaster_links.parquet"
-        },
-        {
-            "local_file": "farcaster_reactions.parquet",
-            "repo_id": "jc4p/farcaster-reactions",
-            "repo_path": "farcaster_reactions.parquet"
-        }
+#        {
+#            "local_file": "farcaster_links.parquet",
+#            "repo_id": "jc4p/farcaster-links",
+#            "repo_path": "farcaster_links.parquet"
+#        },
+#        {
+#            "local_file": "farcaster_reactions.parquet",
+#            "repo_id": "jc4p/farcaster-reactions",
+#            "repo_path": "farcaster_reactions.parquet"
+#        }
     ]
     
     # Create a progress bar for the overall process

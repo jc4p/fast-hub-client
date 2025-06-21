@@ -5,7 +5,7 @@ pretty_name: Farcaster Casts
 
 # Farcaster Public Casts Dataset
 
-This dataset contains 161,053,937 public casts (posts) from the Farcaster social protocol that have not been deleted by their authors. The dataset includes comprehensive metadata for each cast, allowing for detailed analysis of the Farcaster ecosystem.
+This dataset contains 175,067,847 public casts (posts) from the Farcaster social protocol that have not been deleted by their authors. The dataset includes comprehensive metadata for each cast, allowing for detailed analysis of the Farcaster ecosystem.
 
 ## Dataset Description
 
@@ -42,9 +42,9 @@ dt = datetime.fromtimestamp(unix_timestamp)
 ```
 
 ## Key Statistics
-- Total number of casts: 161,053,937
+- Total number of casts: 175,067,847
 - Format: Single Parquet file
-- Dataset includes all non-deleted casts from the Farcaster network as of March 31, 2025
+- Dataset includes all non-deleted casts from the Farcaster network as of June 20, 2025
 
 ## Intended Uses
 
@@ -115,4 +115,4 @@ LIMIT 100;
 MIT License
 
 ## Updates
-This dataset represents a snapshot of Farcaster casts as of March 31, 2025. For live data, please refer to the Farcaster protocol directly or check for updated versions of this dataset.
+This dataset represents a snapshot of Farcaster casts as of June 20, 2025. For live data, please refer to the Farcaster protocol directly or check for updated versions of this dataset.
