@@ -45,7 +45,7 @@
   <!-- Define the proto files to compile -->
   <ItemGroup>
     <!-- Include only our production-specific proto files with explicit proto path to control import resolution -->
-    <Protobuf Include="Proto/*.proto" GrpcServices="Client" OutputDir="$(ProtoOutputDir)" CompileOutputs="true" ProtoRoot="$(MSBuildProjectDirectory)" />
+    <Protobuf Include="Proto\*.proto" GrpcServices="Client" OutputDir="$(ProtoOutputDir)" CompileOutputs="true" ProtoRoot="Proto" />
   </ItemGroup>
 
   <!-- Ensure the generated files are included in compilation -->

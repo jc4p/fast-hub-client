@@ -13,6 +13,11 @@ namespace HubClient.Production
         /// Server endpoint URL
         /// </summary>
         public string ServerEndpoint { get; set; } = null!;
+        
+        /// <summary>
+        /// Optional API key for authentication
+        /// </summary>
+        public string? ApiKey { get; set; }
 
         /// <summary>
         /// Number of channels to create in the channel manager

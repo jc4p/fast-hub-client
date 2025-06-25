@@ -420,6 +420,100 @@ namespace HubClient.Production
             var client = new HubService.HubServiceClient(_connectionManager.Channel);
             return await client.GetUserDataByFidAsync(request, cancellationToken: cancellationToken);
         }
+        
+        /// <summary>
+        /// Gets current storage limits and tier subscription info for the specified FID
+        /// </summary>
+        /// <param name="request">The request containing the FID</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>Response containing storage limits and tier subscriptions</returns>
+        public async Task<StorageLimitsResponse> GetCurrentStorageLimitsByFidAsync(FidRequest request, CancellationToken cancellationToken = default)
+        {
+            EnsureNotDisposed();
+            await EnsureInitializedAsync().ConfigureAwait(false);
+            
+            var client = new HubService.HubServiceClient(_connectionManager.Channel);
+            return await client.GetCurrentStorageLimitsByFidAsync(request, cancellationToken: cancellationToken);
+        }
+        
+        /// <summary>
+        /// Gets the ID registry on-chain event for the specified FID
+        /// </summary>
+        /// <param name="request">The request containing the FID</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>On-chain event containing the primary Ethereum address</returns>
+        public async Task<OnChainEvent> GetIdRegistryOnChainEventAsync(FidRequest request, CancellationToken cancellationToken = default)
+        {
+            EnsureNotDisposed();
+            await EnsureInitializedAsync().ConfigureAwait(false);
+            
+            var client = new HubService.HubServiceClient(_connectionManager.Channel);
+            return await client.GetIdRegistryOnChainEventAsync(request, cancellationToken: cancellationToken);
+        }
+        
+        /// <summary>
+        /// Gets the latest FID from the hub
+        /// </summary>
+        /// <param name="shardId">The shard ID to query (default 0)</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>The latest FID or null if none found</returns>
+        public async Task<ulong?> GetLatestFidAsync(uint shardId = 0, CancellationToken cancellationToken = default)
+        {
+            EnsureNotDisposed();
+            await EnsureInitializedAsync().ConfigureAwait(false);
+            
+            var client = new HubService.HubServiceClient(_connectionManager.Channel);
+            
+            // Request FIDs in reverse order to get the latest first
+            var request = new FidsRequest
+            {
+                ShardId = shardId,
+                PageSize = 1,
+                Reverse = true
+            };
+            
+            var response = await client.GetFidsAsync(request, cancellationToken: cancellationToken);
+            
+            if (response.Fids.Count > 0)
+            {
+                return response.Fids[0];
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Gets the latest FID across all shards
+        /// </summary>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>The latest FID across all shards</returns>
+        public async Task<ulong?> GetLatestFidFromAnyShard(CancellationToken cancellationToken = default)
+        {
+            EnsureNotDisposed();
+            await EnsureInitializedAsync().ConfigureAwait(false);
+            
+            ulong? maxFid = null;
+            
+            // Try shards 0, 1, and 2 (common shard IDs)
+            for (uint shardId = 0; shardId <= 2; shardId++)
+            {
+                try
+                {
+                    var latestFid = await GetLatestFidAsync(shardId, cancellationToken);
+                    if (latestFid.HasValue && (!maxFid.HasValue || latestFid.Value > maxFid.Value))
+                    {
+                        maxFid = latestFid.Value;
+                    }
+                }
+                catch (RpcException ex) when (ex.StatusCode == StatusCode.InvalidArgument)
+                {
+                    // This shard doesn't exist, continue
+                    continue;
+                }
+            }
+            
+            return maxFid;
+        }
 
         #region Private Methods
 

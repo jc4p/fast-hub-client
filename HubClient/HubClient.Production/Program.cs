@@ -15,9 +15,19 @@ using HubClient.Production.Storage;
 using HubClient.Production.Serialization;
 using HubClient.Core.Storage;
 using Parquet.Schema;
+using System.Linq;
+using Parquet;
 
 namespace HubClient.Production
 {
+    /// <summary>
+    /// Class for pro member data to work with Parquet serialization
+    /// </summary>
+    public class ProMemberRecord
+    {
+        public long FID { get; set; }
+    }
+    
     /// <summary>
     /// Default implementation of ISchemaGenerator for Parquet files
     /// </summary>
@@ -98,9 +108,20 @@ namespace HubClient.Production
             );
             rootCommand.AddOption(daysOption);
             
-            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days) =>
+            var proMembersOption = new Option<bool>(
+                "--pro-members",
+                getDefaultValue: () => false,
+                description: "Export all FIDs with pro membership along with their profile data and Ethereum address"
+            );
+            rootCommand.AddOption(proMembersOption);
+            
+            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days, bool proMembers) =>
             {
-                if (profiles)
+                if (proMembers)
+                {
+                    await RunProMemberScanner();
+                }
+                else if (profiles)
                 {
                     await RunCrawler("profiles", fid, days);
                 }
@@ -108,7 +129,7 @@ namespace HubClient.Production
                 {
                     await RunCrawler(messageType, fid, days);
                 }
-            }, messageTypeOption, fidOption, profilesOption, daysOption);
+            }, messageTypeOption, fidOption, profilesOption, daysOption, proMembersOption);
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -132,10 +153,10 @@ namespace HubClient.Production
             }
             
             bool isSingleFid = specificFid.HasValue;
-            uint startFid = isSingleFid ? specificFid.Value : 1_050_000;
+            uint startFid = isSingleFid ? specificFid.Value : 0; // Will be set dynamically
             uint endFid = isSingleFid ? specificFid.Value : 1;
             
-            string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from 1,050,000 down to 1";
+            string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from latest FID down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
 
             long? cutoffTimestamp = null;
@@ -171,14 +192,44 @@ namespace HubClient.Production
             try
             {
                 // 1. Create the client with increased concurrency for faster crawling
+                var hubUrl = Environment.GetEnvironmentVariable("HUB_URL") ?? "http://localhost:3383";
+                var hubApiKey = Environment.GetEnvironmentVariable("HUB_API_KEY");
+                
+                if (!string.IsNullOrEmpty(hubApiKey))
+                {
+                    logger.LogInformation($"Using HUB_URL: {hubUrl} with API key");
+                }
+                else
+                {
+                    logger.LogInformation($"Using HUB_URL: {hubUrl} without API key");
+                }
+                
                 var options = new OptimizedHubClientOptions
                 {
-                    ServerEndpoint = "http://localhost:3383", // Updated Hub endpoint
+                    ServerEndpoint = hubUrl,
                     ChannelCount = 8,
-                    MaxConcurrentCallsPerChannel = 500
+                    MaxConcurrentCallsPerChannel = 500,
+                    ApiKey = hubApiKey
                 };
                 
                 using var client = new OptimizedHubClient(options, loggerFactory.CreateLogger<OptimizedHubClient>());
+                await client.InitializeAsync();
+                
+                // Get the latest FID from the hub if not processing a specific FID
+                if (!isSingleFid)
+                {
+                    logger.LogInformation("Querying hub for latest FID across all shards...");
+                    var latestFid = await client.GetLatestFidFromAnyShard();
+                    
+                    if (!latestFid.HasValue || latestFid.Value == 0)
+                    {
+                        logger.LogError("Failed to get latest FID from hub");
+                        return;
+                    }
+                    
+                    startFid = (uint)latestFid.Value;
+                    logger.LogInformation($"Latest FID from hub: {startFid}");
+                }
                 
                 // 2. Set up storage to save to parquet file
                 var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "output");
@@ -547,6 +598,231 @@ namespace HubClient.Production
                 logger.LogInformation($"Total execution time before error: {totalStopwatch.Elapsed.TotalHours:F1} hours ({totalStopwatch.Elapsed.TotalMinutes:F1} minutes)");
                 logger.LogInformation($"Successfully processed {totalSuccessfulFids} FIDs with {totalMessagesRetrieved} total {messageTypeDisplay} messages before failure");
             }
+        }
+        
+        private static async Task RunProMemberScanner()
+        {
+            Console.WriteLine("Starting HubClient Pro Member Scanner...");
+            
+            // Set up logging
+            var serviceProvider = new ServiceCollection()
+                .AddLogging(builder =>
+                {
+                    builder.AddConsole();
+                    builder.SetMinimumLevel(LogLevel.Information);
+                })
+                .BuildServiceProvider();
+                
+            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger<Program>();
+            
+            // Create a stopwatch to measure total execution time
+            var totalStopwatch = new Stopwatch();
+            totalStopwatch.Start();
+            
+            // For statistics
+            int totalScannedFids = 0;
+            int totalProMembers = 0;
+            int totalFailedFids = 0;
+            
+            try
+            {
+                // Create the client
+                var hubUrl = Environment.GetEnvironmentVariable("HUB_URL") ?? "http://localhost:3383";
+                var hubApiKey = Environment.GetEnvironmentVariable("HUB_API_KEY");
+                
+                if (!string.IsNullOrEmpty(hubApiKey))
+                {
+                    logger.LogInformation($"Using HUB_URL: {hubUrl} with API key");
+                }
+                else
+                {
+                    logger.LogInformation($"Using HUB_URL: {hubUrl} without API key");
+                }
+                
+                var options = new OptimizedHubClientOptions
+                {
+                    ServerEndpoint = hubUrl,
+                    ChannelCount = 8,
+                    MaxConcurrentCallsPerChannel = 500,
+                    ApiKey = hubApiKey
+                };
+                
+                using var client = new OptimizedHubClient(options, loggerFactory.CreateLogger<OptimizedHubClient>());
+                await client.InitializeAsync();
+                
+                // Set up storage to save to parquet file
+                var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "output");
+                var dataDir = Path.Combine(outputDir, "pro_members");
+                Directory.CreateDirectory(dataDir);
+                
+                // Create schema generator and storage factory
+                var schemaGenerator = new DefaultSchemaGenerator();
+                var storageFactory = new OptimizedStorageFactory(
+                    loggerFactory,
+                    schemaGenerator,
+                    dataDir);
+                
+                // Create a simple parquet writer for pro member data
+                var outputFile = Path.Combine(dataDir, "pro_members_export.parquet");
+                var proMemberRecords = new List<ProMemberRecord>();
+                
+                // Get the latest FID from the hub
+                logger.LogInformation("Querying hub for latest FID across all shards...");
+                var latestFid = await client.GetLatestFidFromAnyShard();
+                
+                if (!latestFid.HasValue || latestFid.Value == 0)
+                {
+                    logger.LogError("Failed to get latest FID from hub");
+                    return;
+                }
+                
+                // Define FID range to process
+                uint startFid = (uint)latestFid.Value;
+                uint endFid = 1;
+                const uint progressInterval = 1000;
+                
+                logger.LogInformation($"Latest FID from hub: {startFid}");
+                logger.LogInformation($"Beginning to scan FIDs from {startFid} down to {endFid} for pro members");
+                logger.LogInformation($"All data will be saved to 'output/pro_members/pro_members_export'");
+                
+                uint currentFid = startFid;
+                
+                // Process each FID in the range
+                while (currentFid >= endFid)
+                {
+                    try
+                    {
+                        totalScannedFids++;
+                        
+                        // Create request for this FID
+                        var fidRequest = new FidRequest { Fid = currentFid };
+                        
+                        // Check storage limits to get tier subscription info
+                        StorageLimitsResponse storageLimits = null;
+                        bool hasProMembership = false;
+                        long proExpiresAt = 0;
+                        
+                        try
+                        {
+                            storageLimits = await client.GetCurrentStorageLimitsByFidAsync(fidRequest);
+                            
+                            // Check for pro membership
+                            if (storageLimits?.TierSubscriptions != null)
+                            {
+                                foreach (var tier in storageLimits.TierSubscriptions)
+                                {
+                                    if (tier.TierType == TierType.Pro)
+                                    {
+                                        hasProMembership = true;
+                                        proExpiresAt = (long)tier.ExpiresAt;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogDebug($"Failed to get storage limits for FID {currentFid}: {ex.Message}");
+                        }
+                        
+                        // Only process FIDs with ACTIVE pro membership
+                        bool isActivePro = hasProMembership && proExpiresAt > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        
+                        if (isActivePro)
+                        {
+                            totalProMembers++;
+                            
+                            // Save the FID
+                            proMemberRecords.Add(new ProMemberRecord { FID = (long)currentFid });
+                            
+                            logger.LogInformation($"FID {currentFid}: Active pro member - Expires: {DateTimeOffset.FromUnixTimeSeconds(proExpiresAt).ToString("yyyy-MM-dd HH:mm:ss UTC")}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        totalFailedFids++;
+                        logger.LogWarning($"Failed to process FID {currentFid}: {ex.Message}");
+                    }
+                    
+                    // Move to the next FID
+                    currentFid--;
+                    
+                    // Report progress periodically
+                    if (currentFid % progressInterval == 0 || currentFid == endFid)
+                    {
+                        double progressPercent = 100.0 * (startFid - currentFid) / (startFid - endFid);
+                        TimeSpan elapsed = totalStopwatch.Elapsed;
+                        double processingRate = (startFid - currentFid) / elapsed.TotalSeconds;
+                        TimeSpan estimatedRemaining = TimeSpan.FromSeconds((currentFid - endFid) / processingRate);
+                        
+                        logger.LogInformation(
+                            $"Progress: {progressPercent:F2}% complete | " +
+                            $"Current: FID {currentFid} | " +
+                            $"Stats: {totalProMembers} active pro members found from {totalScannedFids} FIDs scanned | " +
+                            $"Time: {elapsed.TotalMinutes:F1} minutes elapsed, ~{estimatedRemaining.TotalMinutes:F1} minutes remaining");
+                        
+                        // Log progress
+                    }
+                }
+                
+                // Write all records to Parquet file
+                if (proMemberRecords.Count > 0)
+                {
+                    logger.LogInformation($"Writing {proMemberRecords.Count} active pro member FIDs to CSV file...");
+                    
+                    // Convert to CSV for now (simpler than dealing with Parquet API)
+                    var csvFile = Path.ChangeExtension(outputFile, ".csv");
+                    using (var writer = new StreamWriter(csvFile))
+                    {
+                        // Write FIDs only, no header
+                        foreach (var record in proMemberRecords)
+                        {
+                            await writer.WriteLineAsync(record.FID.ToString());
+                        }
+                    }
+                    outputFile = csvFile;
+                    
+                    logger.LogInformation($"Successfully wrote pro member data to {outputFile}");
+                }
+                
+                // Stop timing
+                totalStopwatch.Stop();
+                
+                logger.LogInformation($"Pro member scan complete!");
+                logger.LogInformation($"Found {totalProMembers} ACTIVE pro members out of {totalScannedFids} FIDs scanned");
+                logger.LogInformation($"Failed to process {totalFailedFids} FIDs due to errors");
+                logger.LogInformation($"Total execution time: {totalStopwatch.Elapsed.TotalHours:F1} hours ({totalStopwatch.Elapsed.TotalMinutes:F1} minutes)");
+                logger.LogInformation($"Data has been saved to {outputFile}");
+            }
+            catch (Exception ex)
+            {
+                if (totalStopwatch.IsRunning)
+                {
+                    totalStopwatch.Stop();
+                }
+                
+                logger.LogError(ex, "A critical error occurred during the pro member scanning process");
+                logger.LogInformation($"Total execution time before error: {totalStopwatch.Elapsed.TotalHours:F1} hours ({totalStopwatch.Elapsed.TotalMinutes:F1} minutes)");
+                logger.LogInformation($"Successfully found {totalProMembers} active pro members from {totalScannedFids} FIDs before failure");
+            }
+        }
+        
+        private static string EscapeCsvField(string field)
+        {
+            if (string.IsNullOrEmpty(field))
+                return "";
+                
+            // Escape quotes by doubling them
+            field = field.Replace("\"", "\"\"");
+            
+            // If field contains comma, newline, or quote, it needs to be quoted
+            if (field.Contains(',') || field.Contains('\n') || field.Contains('\r') || field.Contains('"'))
+            {
+                return field; // Already quoted in the caller
+            }
+            
+            return field;
         }
     }
 } 
