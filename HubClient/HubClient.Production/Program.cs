@@ -26,6 +26,7 @@ namespace HubClient.Production
     public class ProMemberRecord
     {
         public long FID { get; set; }
+        public string PrimaryEthAddress { get; set; } = "";
     }
     
     /// <summary>
@@ -733,10 +734,57 @@ namespace HubClient.Production
                         {
                             totalProMembers++;
                             
-                            // Save the FID
-                            proMemberRecords.Add(new ProMemberRecord { FID = (long)currentFid });
+                            // Create a record for this pro member
+                            var record = new ProMemberRecord
+                            {
+                                FID = (long)currentFid,
+                                PrimaryEthAddress = ""
+                            };
                             
-                            logger.LogInformation($"FID {currentFid}: Active pro member - Expires: {DateTimeOffset.FromUnixTimeSeconds(proExpiresAt).ToString("yyyy-MM-dd HH:mm:ss UTC")}");
+                            // Get verified Ethereum addresses
+                            try
+                            {
+                                var hubServiceClient = client.CreateClient<HubService.HubServiceClient>();
+                                var verificationResponse = await hubServiceClient.CallAsync(
+                                    async (client, ct) => await client.GetVerificationsByFidAsync(fidRequest, cancellationToken: ct).ResponseAsync,
+                                    $"GetVerificationsByFid-{currentFid}");
+                                
+                                // Find the latest Ethereum verification
+                                Message latestEthVerification = null;
+                                ulong latestTimestamp = 0;
+                                
+                                foreach (var message in verificationResponse.Messages)
+                                {
+                                    // Check if this is an Ethereum verification add message
+                                    if (message.Data?.Type == MessageType.VerificationAddEthAddress && 
+                                        message.Data?.VerificationAddAddressBody != null &&
+                                        message.Data.VerificationAddAddressBody.Protocol == Protocol.Ethereum)
+                                    {
+                                        // Check if this is the latest one
+                                        if (message.Data.Timestamp > latestTimestamp)
+                                        {
+                                            latestTimestamp = message.Data.Timestamp;
+                                            latestEthVerification = message;
+                                        }
+                                    }
+                                }
+                                
+                                // Extract the address if we found one
+                                if (latestEthVerification?.Data?.VerificationAddAddressBody?.Address != null)
+                                {
+                                    var ethAddress = latestEthVerification.Data.VerificationAddAddressBody.Address.ToByteArray();
+                                    record.PrimaryEthAddress = "0x" + Convert.ToHexString(ethAddress).ToLower();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogDebug($"Failed to get verifications for FID {currentFid}: {ex.Message}");
+                            }
+                            
+                            // Save the record
+                            proMemberRecords.Add(record);
+                            
+                            logger.LogInformation($"FID {currentFid}: Active pro member - ETH: {record.PrimaryEthAddress}, Expires: {DateTimeOffset.FromUnixTimeSeconds(proExpiresAt).ToString("yyyy-MM-dd HH:mm:ss UTC")}");
                         }
                     }
                     catch (Exception ex)
@@ -769,16 +817,16 @@ namespace HubClient.Production
                 // Write all records to Parquet file
                 if (proMemberRecords.Count > 0)
                 {
-                    logger.LogInformation($"Writing {proMemberRecords.Count} active pro member FIDs to CSV file...");
+                    logger.LogInformation($"Writing {proMemberRecords.Count} active pro member records to CSV file...");
                     
                     // Convert to CSV for now (simpler than dealing with Parquet API)
                     var csvFile = Path.ChangeExtension(outputFile, ".csv");
                     using (var writer = new StreamWriter(csvFile))
                     {
-                        // Write FIDs only, no header
+                        // Write FID and ETH address
                         foreach (var record in proMemberRecords)
                         {
-                            await writer.WriteLineAsync(record.FID.ToString());
+                            await writer.WriteLineAsync($"{record.FID},{record.PrimaryEthAddress}");
                         }
                     }
                     outputFile = csvFile;
