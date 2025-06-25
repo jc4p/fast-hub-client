@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RealtimeListener.Core", "RealtimeListener.Core\RealtimeListener.Core.csproj", "{AF70DD32-F325-40E4-96A3-9DA68BDE81EE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RealtimeListener.Production", "RealtimeListener.Production\RealtimeListener.Production.csproj", "{7282B45D-8493-4051-B2F6-DAA68D82DF8B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RealtimeListener.Benchmarks", "RealtimeListener.Benchmarks\RealtimeListener.Benchmarks.csproj", "{DA1E4828-54CA-46A7-BF25-1CA51786183F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AF70DD32-F325-40E4-96A3-9DA68BDE81EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF70DD32-F325-40E4-96A3-9DA68BDE81EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF70DD32-F325-40E4-96A3-9DA68BDE81EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF70DD32-F325-40E4-96A3-9DA68BDE81EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7282B45D-8493-4051-B2F6-DAA68D82DF8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7282B45D-8493-4051-B2F6-DAA68D82DF8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7282B45D-8493-4051-B2F6-DAA68D82DF8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7282B45D-8493-4051-B2F6-DAA68D82DF8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA1E4828-54CA-46A7-BF25-1CA51786183F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA1E4828-54CA-46A7-BF25-1CA51786183F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA1E4828-54CA-46A7-BF25-1CA51786183F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA1E4828-54CA-46A7-BF25-1CA51786183F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
