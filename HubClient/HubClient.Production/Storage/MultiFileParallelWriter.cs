@@ -65,7 +65,7 @@ namespace HubClient.Production.Storage
                 
             _messageConverter = messageConverter ?? throw new ArgumentNullException(nameof(messageConverter));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _schemaGenerator = schemaGenerator ?? throw new ArgumentNullException(nameof(schemaGenerator));
+            _schemaGenerator = schemaGenerator; // Allow null for automatic schema inference
             
             _compressionMethod = compressionMethod;
             _rowGroupSize = rowGroupSize;
@@ -341,6 +341,19 @@ namespace HubClient.Production.Storage
                     await writer.DisposeAsync().ConfigureAwait(false);
                 }
                 
+                // Consolidate all parquet files from temporary directory to output directory
+                try
+                {
+                    if (Directory.Exists(_temporaryDirectory))
+                    {
+                        ConsolidateParquetFiles();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error consolidating parquet files: {Message}", ex.Message);
+                }
+                
                 // Clean up the temporary directory
                 try
                 {
@@ -359,6 +372,52 @@ namespace HubClient.Production.Storage
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error disposing MultiFileParallelWriter: {Message}", ex.Message);
+            }
+        }
+        
+        /// <summary>
+        /// Consolidates all parquet files from the temporary directory to the output directory
+        /// </summary>
+        private void ConsolidateParquetFiles()
+        {
+            try
+            {
+                // Find all parquet files in the temporary directory and its subdirectories
+                var parquetFiles = Directory.GetFiles(_temporaryDirectory, "*.parquet", SearchOption.AllDirectories)
+                    .OrderBy(f => f)
+                    .ToList();
+                
+                if (parquetFiles.Count == 0)
+                {
+                    _logger.LogInformation("No parquet files found in temporary directory to consolidate");
+                    return;
+                }
+                
+                _logger.LogInformation("Consolidating {Count} parquet files from temporary workers", parquetFiles.Count);
+                
+                // Move each file to the output directory with a unique name
+                foreach (var sourceFile in parquetFiles)
+                {
+                    var fileName = Path.GetFileName(sourceFile);
+                    var destFile = Path.Combine(_outputDirectory, fileName);
+                    
+                    // If the file already exists in destination, make it unique
+                    if (File.Exists(destFile))
+                    {
+                        var uniqueName = $"{Path.GetFileNameWithoutExtension(fileName)}_{Guid.NewGuid():N}{Path.GetExtension(fileName)}";
+                        destFile = Path.Combine(_outputDirectory, uniqueName);
+                    }
+                    
+                    File.Move(sourceFile, destFile);
+                    _logger.LogDebug("Moved {Source} to {Dest}", Path.GetFileName(sourceFile), Path.GetFileName(destFile));
+                }
+                
+                _logger.LogInformation("Successfully consolidated {Count} parquet files to output directory", parquetFiles.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during parquet file consolidation: {Message}", ex.Message);
+                throw;
             }
         }
         

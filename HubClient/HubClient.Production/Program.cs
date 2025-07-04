@@ -76,6 +76,26 @@ namespace HubClient.Production
     {
         private const long FarcasterEpochOffsetSeconds = 1609459200L;
         
+        /// <summary>
+        /// Converts a byte array to a hex string with 0x prefix
+        /// </summary>
+        private static string ToHexString(ByteString bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return "";
+            return "0x" + Convert.ToHexString(bytes.ToByteArray()).ToLower();
+        }
+        
+        /// <summary>
+        /// Converts a byte array to a hex string with 0x prefix
+        /// </summary>
+        private static string ToHexString(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return "";
+            return "0x" + Convert.ToHexString(bytes).ToLower();
+        }
+        
         public static async Task<int> Main(string[] args)
         {
             // Create command line options
@@ -116,9 +136,20 @@ namespace HubClient.Production
             );
             rootCommand.AddOption(proMembersOption);
             
-            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days, bool proMembers) =>
+            var testConnectionOption = new Option<bool>(
+                "--test-connection",
+                getDefaultValue: () => false,
+                description: "Test the gRPC connection by fetching last 10 pages of casts for FID 977233"
+            );
+            rootCommand.AddOption(testConnectionOption);
+            
+            rootCommand.SetHandler(async (string messageType, uint? fid, bool profiles, int? days, bool proMembers, bool testConnection) =>
             {
-                if (proMembers)
+                if (testConnection)
+                {
+                    await TestConnection.RunTest();
+                }
+                else if (proMembers)
                 {
                     await RunProMemberScanner();
                 }
@@ -130,7 +161,7 @@ namespace HubClient.Production
                 {
                     await RunCrawler(messageType, fid, days);
                 }
-            }, messageTypeOption, fidOption, profilesOption, daysOption, proMembersOption);
+            }, messageTypeOption, fidOption, profilesOption, daysOption, proMembersOption, testConnectionOption);
             
             return await rootCommand.InvokeAsync(args);
         }
@@ -260,7 +291,7 @@ namespace HubClient.Production
                     {
                         logger.LogDebug(
                             "CAST_ADD Message: Hash={Hash}, HasCastAddBody={HasCastAddBody}, DataBytes={DataBytesLength}", 
-                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            ToHexString(message.Hash),
                             hasCastAddBody,
                             message.DataBytes?.Length ?? 0);
                             
@@ -274,7 +305,7 @@ namespace HubClient.Production
                     {
                         logger.LogDebug(
                             "REACTION Message: Hash={Hash}, HasReactionBody={HasReactionBody}, Type={Type}", 
-                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            ToHexString(message.Hash),
                             hasReactionBody,
                             message.Data.Type);
                     }
@@ -282,7 +313,7 @@ namespace HubClient.Production
                     {
                         logger.LogDebug(
                             "LINK Message: Hash={Hash}, HasLinkBody={HasLinkBody}, Type={Type}", 
-                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            ToHexString(message.Hash),
                             hasLinkBody,
                             message.Data.Type);
                     }
@@ -290,20 +321,20 @@ namespace HubClient.Production
                     {
                         logger.LogDebug(
                             "USER_DATA Message: Hash={Hash}, HasUserDataBody={HasUserDataBody}, Type={Type}", 
-                            Convert.ToBase64String(message.Hash.ToByteArray()),
+                            ToHexString(message.Hash),
                             hasUserDataBody,
                             message.Data.Type);
                     }
                     
                     var dict = new Dictionary<string, object>
                     {
-                        ["Fid"] = message.Data?.Fid ?? 0,
+                        ["Fid"] = (long)(message.Data?.Fid ?? 0),
                         ["MessageType"] = messageType,
-                        ["Timestamp"] = message.Data?.Timestamp ?? 0,
-                        ["Hash"] = Convert.ToBase64String(message.Hash.ToByteArray()),
+                        ["Timestamp"] = (long)(message.Data?.Timestamp ?? 0),
+                        ["Hash"] = ToHexString(message.Hash),
                         ["SignatureScheme"] = message.SignatureScheme.ToString(),
-                        ["Signature"] = Convert.ToBase64String(message.Signature.ToByteArray()),
-                        ["Signer"] = Convert.ToBase64String(message.Signer.ToByteArray())
+                        ["Signature"] = ToHexString(message.Signature),
+                        ["Signer"] = ToHexString(message.Signer)
                     };
                     
                     // Initialize all fields to empty strings to ensure consistent schema across all records
@@ -330,7 +361,7 @@ namespace HubClient.Production
                             dict["Text"] = message.Data.CastAddBody.Text;
                             dict["Mentions"] = string.Join(",", message.Data.CastAddBody.Mentions);
                             dict["ParentCastId"] = message.Data.CastAddBody.ParentCastId != null ? 
-                                $"{message.Data.CastAddBody.ParentCastId.Fid}:{Convert.ToBase64String(message.Data.CastAddBody.ParentCastId.Hash.ToByteArray())}" : "";
+                                $"{message.Data.CastAddBody.ParentCastId.Fid}:{ToHexString(message.Data.CastAddBody.ParentCastId.Hash)}" : "";
                             dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl;
                             dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ? 
                                 string.Join("|", message.Data.CastAddBody.Embeds) : "";
@@ -340,7 +371,7 @@ namespace HubClient.Production
                         if (message.Data?.CastRemoveBody != null)
                         {
                             dict["TargetHash"] = message.Data.CastRemoveBody.TargetHash != null ? 
-                                Convert.ToBase64String(message.Data.CastRemoveBody.TargetHash.ToByteArray()) : "";
+                                ToHexString(message.Data.CastRemoveBody.TargetHash) : "";
                         }
                     }
                     else if (isReactionMessages)
@@ -355,7 +386,7 @@ namespace HubClient.Production
                         {
                             dict["ReactionType"] = message.Data.ReactionBody.Type.ToString();
                             dict["TargetCastId"] = message.Data.ReactionBody.TargetCastId != null ? 
-                                $"{message.Data.ReactionBody.TargetCastId.Fid}:{Convert.ToBase64String(message.Data.ReactionBody.TargetCastId.Hash.ToByteArray())}" : "";
+                                $"{message.Data.ReactionBody.TargetCastId.Fid}:{ToHexString(message.Data.ReactionBody.TargetCastId.Hash)}" : "";
                             dict["TargetUrl"] = message.Data.ReactionBody.TargetUrl;
                         }
                     }
@@ -363,15 +394,15 @@ namespace HubClient.Production
                     {
                         // Link specific fields
                         dict["LinkType"] = "";
-                        dict["TargetFid"] = "";
-                        dict["DisplayTimestamp"] = "";
+                        dict["TargetFid"] = 0L;
+                        dict["DisplayTimestamp"] = 0L;
                         
                         // Add LinkBody specific properties if available
                         if (message.Data?.LinkBody != null)
                         {
                             dict["LinkType"] = message.Data.LinkBody.Type;
-                            dict["TargetFid"] = message.Data.LinkBody.TargetFid.ToString();
-                            dict["DisplayTimestamp"] = message.Data.LinkBody.DisplayTimestamp.ToString();
+                            dict["TargetFid"] = (long)message.Data.LinkBody.TargetFid;
+                            dict["DisplayTimestamp"] = (long)message.Data.LinkBody.DisplayTimestamp;
                         }
                     }
                     else if (isProfileMessages)
@@ -577,6 +608,16 @@ namespace HubClient.Production
                 
                 // Make sure to flush and close the storage
                 await storage.FlushAsync();
+                
+                // Dispose the storage to clean up resources
+                if (storage is IAsyncDisposable asyncDisposable)
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                else if (storage is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
                 
                 // Stop timing
                 totalStopwatch.Stop();

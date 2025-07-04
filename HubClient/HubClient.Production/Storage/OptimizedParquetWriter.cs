@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -35,6 +36,9 @@ namespace HubClient.Production.Storage
         private bool _isDisposed;
         private readonly ILogger<OptimizedParquetWriter<T>> _logger;
         private readonly ISchemaGenerator _schemaGenerator;
+        
+        // Schema cache for performance optimization
+        private static readonly ConcurrentDictionary<string, ParquetSchema> _schemaCache = new();
         
         /// <summary>
         /// Creates a new instance of the <see cref="OptimizedParquetWriter{T}"/> class with settings
@@ -75,7 +79,7 @@ namespace HubClient.Production.Storage
             Directory.CreateDirectory(_outputDirectory);
             
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _schemaGenerator = schemaGenerator ?? throw new ArgumentNullException(nameof(schemaGenerator));
+            _schemaGenerator = schemaGenerator; // Allow null for automatic schema inference
             
             _logger.LogInformation(
                 "Created OptimizedParquetWriter with: compression={Compression}, rowGroupSize={RowGroupSize}, " +
@@ -206,26 +210,30 @@ namespace HubClient.Production.Storage
             if (rows.Count == 0)
                 return;
                 
-            // Use the schema generator if available, otherwise infer from first row
-            ParquetSchema schema;
-            if (_schemaGenerator != null)
+            // Get schema from cache or generate it
+            var cacheKey = $"{typeof(T).FullName}_{_schemaGenerator?.GetType().FullName ?? "Inferred"}";
+            var schema = _schemaCache.GetOrAdd(cacheKey, _ =>
             {
-                // Convert first row and use it for schema generation instead of using generic method
-                if (rows.Count > 0)
+                // Use the schema generator if available, otherwise infer from first row
+                if (_schemaGenerator != null)
                 {
-                    schema = _schemaGenerator.GenerateSchema(rows[0]);
+                    // Convert first row and use it for schema generation instead of using generic method
+                    if (rows.Count > 0)
+                    {
+                        return _schemaGenerator.GenerateSchema(rows[0]);
+                    }
+                    else
+                    {
+                        // Create an empty message and convert it for schema
+                        var emptyMessage = new T();
+                        return _schemaGenerator.GenerateSchema(_messageConverter(emptyMessage));
+                    }
                 }
                 else
                 {
-                    // Create an empty message and convert it for schema
-                    var emptyMessage = new T();
-                    schema = _schemaGenerator.GenerateSchema(_messageConverter(emptyMessage));
+                    return InferSchemaFromFirstRow(rows);
                 }
-            }
-            else
-            {
-                schema = InferSchemaFromFirstRow(rows);
-            }
+            });
             
             // Create parquet file with optimized settings
             await Task.Run(() =>
@@ -328,15 +336,15 @@ namespace HubClient.Production.Storage
         private static DataColumn CreateDataColumn(Field field, IList<object> values)
         {
             if (field is DataField<int> intField)
-                return new DataColumn(intField, values.Cast<int?>().ToArray());
+                return new DataColumn(intField, values.Select(v => v is int i ? i : 0).ToArray());
             else if (field is DataField<long> longField)
-                return new DataColumn(longField, values.Cast<long?>().ToArray());
+                return new DataColumn(longField, values.Select(v => v is long l ? l : 0L).ToArray());
             else if (field is DataField<float> floatField)
-                return new DataColumn(floatField, values.Cast<float?>().ToArray());
+                return new DataColumn(floatField, values.Select(v => v is float f ? f : 0f).ToArray());
             else if (field is DataField<double> doubleField)
-                return new DataColumn(doubleField, values.Cast<double?>().ToArray());
+                return new DataColumn(doubleField, values.Select(v => v is double d ? d : 0d).ToArray());
             else if (field is DataField<bool> boolField)
-                return new DataColumn(boolField, values.Cast<bool?>().ToArray());
+                return new DataColumn(boolField, values.Select(v => v is bool b ? b : false).ToArray());
             else if (field is DataField<DateTime> dateField)
                 return new DataColumn(dateField, values.Cast<DateTime?>().ToArray());
             else if (field is DataField<DateTimeOffset> dateOffsetField)

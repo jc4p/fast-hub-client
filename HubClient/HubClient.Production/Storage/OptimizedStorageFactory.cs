@@ -66,7 +66,7 @@ namespace HubClient.Production.Storage
                 outputDirectory,
                 messageConverter,
                 writerLogger,
-                _schemaGenerator,
+                _schemaGenerator,          // Use the schema generator for proper type mapping
                 CompressionMethod.Snappy,  // Balanced performance/compression
                 50000,                     // Optimal row group size from benchmarks
                 8192,                      // Optimal page size from benchmarks
@@ -107,7 +107,7 @@ namespace HubClient.Production.Storage
                 outputDirectory,
                 messageConverter,
                 writerLogger,
-                _schemaGenerator,
+                _schemaGenerator,          // Use the schema generator for proper type mapping
                 CompressionMethod.Snappy,  // Balanced performance/compression
                 100000,                    // Larger row groups for high-volume data
                 8192,                      // Optimal page size from benchmarks
@@ -146,7 +146,7 @@ namespace HubClient.Production.Storage
                 outputDirectory,
                 messageConverter,
                 writerLogger,
-                _schemaGenerator,
+                _schemaGenerator,          // Use the schema generator for proper type mapping
                 CompressionMethod.Snappy,  // Balanced performance/compression
                 10000,                     // Smaller row groups for more frequent writes
                 4096,                      // Smaller page size for smaller messages
