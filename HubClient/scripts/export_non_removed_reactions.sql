@@ -10,8 +10,8 @@ SELECT
   ReactionType,
   MessageType,
   Hash,
-  CAST(Timestamp AS BIGINT) AS TimestampInt,
-  *  -- Keep all columns for later
+  Timestamp,
+  *
 FROM read_parquet('output/reactions/reactions_messages/*.parquet')
 WHERE MessageType IN ('ReactionAdd', 'ReactionRemove');
 
@@ -24,7 +24,7 @@ SELECT
   Fid, 
   TargetCastId,
   ReactionType,
-  MAX(TimestampInt) AS MaxTimestamp
+  MAX(Timestamp) AS MaxTimestamp
 FROM all_reaction_events
 GROUP BY Fid, TargetCastId, ReactionType;
 
@@ -36,7 +36,7 @@ COPY (
     ON r.Fid = e.Fid 
     AND r.TargetCastId = e.TargetCastId 
     AND r.ReactionType = e.ReactionType
-    AND r.TimestampInt = e.MaxTimestamp
+    AND r.Timestamp = e.MaxTimestamp
   WHERE r.MessageType = 'ReactionAdd'
 ) TO 'farcaster_reactions.parquet' (FORMAT PARQUET, COMPRESSION ZSTD);
 

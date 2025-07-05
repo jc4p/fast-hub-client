@@ -10,8 +10,8 @@ SELECT
   LinkType,
   MessageType,
   Hash,
-  CAST(Timestamp AS BIGINT) AS TimestampInt,
-  *  -- Keep all columns for later
+  Timestamp
+  *
 FROM read_parquet('output/links/links_messages/*.parquet')
 WHERE MessageType IN ('LinkAdd', 'LinkRemove');
 
@@ -24,7 +24,7 @@ SELECT
   Fid, 
   TargetFid, 
   LinkType,
-  MAX(TimestampInt) AS MaxTimestamp
+  MAX(Timestamp) AS MaxTimestamp
 FROM all_link_events
 GROUP BY Fid, TargetFid, LinkType;
 
@@ -36,7 +36,7 @@ COPY (
     ON l.Fid = e.Fid 
     AND l.TargetFid = e.TargetFid 
     AND l.LinkType = e.LinkType
-    AND l.TimestampInt = e.MaxTimestamp
+    AND l.Timestamp = e.MaxTimestamp
   WHERE l.MessageType = 'LinkAdd'
 ) TO 'farcaster_links.parquet' (FORMAT PARQUET, COMPRESSION ZSTD);
 
