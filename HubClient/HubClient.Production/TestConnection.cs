@@ -149,9 +149,16 @@ namespace HubClient.Production
                     $"test_casts_fid_{TEST_FID}",
                     messageConverter);
                 
+                // Calculate max allowed timestamp to filter out messages with timestamps in the future
+                // Allow 1 day buffer for clock skew
+                long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                long maxAllowedFarcasterTimestamp = (currentUnixTime - FarcasterEpochOffsetSeconds) + (24 * 60 * 60); // Current time + 1 day in Farcaster epoch
+                logger.LogInformation($"Filtering out messages with timestamps beyond {DateTimeOffset.FromUnixTimeSeconds(maxAllowedFarcasterTimestamp + FarcasterEpochOffsetSeconds).DateTime} UTC (current time + 1 day buffer).");
+                
                 // Track statistics
                 int totalCasts = 0;
                 int pagesRetrieved = 0;
+                int skippedFutureCasts = 0;
                 
                 // Create gRPC client
                 var hubServiceClient = client.CreateClient<HubService.HubServiceClient>();
@@ -194,6 +201,14 @@ namespace HubClient.Production
                         // Process and store cast data
                         foreach (var message in response.Messages)
                         {
+                            // Skip messages with timestamps in the future (beyond our max allowed timestamp)
+                            if (message.Data != null && message.Data.Timestamp > maxAllowedFarcasterTimestamp)
+                            {
+                                logger.LogWarning($"Skipping message with future timestamp: FID={message.Data.Fid}, Timestamp={message.Data.Timestamp} (Unix: {message.Data.Timestamp + FarcasterEpochOffsetSeconds}), Hash={ToHexString(message.Hash)}");
+                                skippedFutureCasts++;
+                                continue;
+                            }
+                            
                             await storage.AddAsync(message);
                         }
                         
@@ -247,6 +262,10 @@ namespace HubClient.Production
                 Console.WriteLine($"✅ Connection successful!");
                 Console.WriteLine($"Total casts retrieved: {totalCasts}");
                 Console.WriteLine($"Pages retrieved: {pagesRetrieved}/{PAGES_TO_FETCH}");
+                if (skippedFutureCasts > 0)
+                {
+                    Console.WriteLine($"⚠️  Skipped {skippedFutureCasts} casts with future timestamps");
+                }
                 Console.WriteLine($"Total time: {stopwatch.ElapsedMilliseconds}ms");
                 Console.WriteLine($"Average time per page: {(pagesRetrieved > 0 ? stopwatch.ElapsedMilliseconds / pagesRetrieved : 0)}ms");
                 Console.WriteLine();

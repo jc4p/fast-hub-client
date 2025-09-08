@@ -200,6 +200,12 @@ namespace HubClient.Production
                 Console.WriteLine($"Filtering messages newer than {DateTimeOffset.FromUnixTimeSeconds(cutoffTimestamp.Value).DateTime} UTC ({days.Value} days ago).");
             }
             
+            // Calculate max allowed timestamp to filter out messages with timestamps in the future
+            // Allow 1 day buffer for clock skew
+            long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long maxAllowedFarcasterTimestamp = (currentUnixTime - FarcasterEpochOffsetSeconds) + (24 * 60 * 60); // Current time + 1 day in Farcaster epoch
+            Console.WriteLine($"Filtering out messages with timestamps beyond {DateTimeOffset.FromUnixTimeSeconds(maxAllowedFarcasterTimestamp + FarcasterEpochOffsetSeconds).DateTime} UTC (current time + 1 day buffer).");
+            
             // Set up logging
             var serviceProvider = new ServiceCollection()
                 .AddLogging(builder =>
@@ -531,6 +537,14 @@ namespace HubClient.Production
                                 {
                                     continue; 
                                 }
+                                
+                                // Skip messages with timestamps in the future (beyond our max allowed timestamp)
+                                if (message.Data != null && message.Data.Timestamp > maxAllowedFarcasterTimestamp)
+                                {
+                                    logger.LogWarning($"Skipping message with future timestamp: FID={message.Data.Fid}, Timestamp={message.Data.Timestamp} (Unix: {message.Data.Timestamp + FarcasterEpochOffsetSeconds}), Hash={ToHexString(message.Hash)}");
+                                    continue;
+                                }
+                                
                                 await storage.AddAsync(message);
                             }
 
