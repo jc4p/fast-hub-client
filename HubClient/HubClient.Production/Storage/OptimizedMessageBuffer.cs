@@ -90,7 +90,8 @@ namespace HubClient.Production.Storage
                         // Check if we have enough messages to flush
                         if (_messageCount >= _batchSize)
                         {
-                            await TryFlushInternalAsync(false, _backgroundFlushCts.Token).ConfigureAwait(false);
+                            // Use a non-cancelable token so shutdown cancellation doesn't abort in-flight writes
+                            await TryFlushInternalAsync(false, CancellationToken.None).ConfigureAwait(false);
                         }
                         
                         // Sleep for a short interval to avoid spinning
@@ -178,7 +179,19 @@ namespace HubClient.Production.Storage
         public async Task FlushAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
-            await TryFlushInternalAsync(true, cancellationToken).ConfigureAwait(false);
+            
+            // Drain until empty to avoid leaving remainder batches unflushed
+            while (_messageCount > 0)
+            {
+                int before = _messageCount;
+                await TryFlushInternalAsync(true, cancellationToken).ConfigureAwait(false);
+
+                // If no progress was made (e.g., due to repeated transient errors), break to avoid a tight loop
+                if (_messageCount >= before)
+                {
+                    break;
+                }
+            }
         }
         
         /// <summary>

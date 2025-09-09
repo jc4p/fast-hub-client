@@ -200,27 +200,20 @@ namespace HubClient.Production.Storage
                     var chunkId = $"{batchId}_part{i}";
                     
                     // Add task to process this chunk
-                    var task = writer.WriteMessagesAsync(chunk, chunkId, cancellationToken)
-                        .ContinueWith(t => 
-                        {
-                            if (!t.IsFaulted)
-                            {
-                                var info = writer.GetLastBatchInfo();
-                                lock (workerFiles)
-                                {
-                                    workerFiles.Add(info.FilePath);
-                                }
-                            }
-                            return t;
-                        }, cancellationToken)
-                        .Unwrap();
-                        
-                    tasks.Add(task);
+                    tasks.Add(writer.WriteMessagesAsync(chunk, chunkId, cancellationToken));
                 }
                 
                 // Wait for all parallel writes to complete
                 await Task.WhenAll(tasks).ConfigureAwait(false);
                 
+                // Collect worker file paths after successful writes
+                for (int i = 0; i < _parallelWriters.Count && i < chunks.Count; i++)
+                {
+                    if (chunks[i].Count == 0) continue;
+                    var info = _parallelWriters[i].GetLastBatchInfo();
+                    workerFiles.Add(info.FilePath);
+                }
+
                 // Create the output file path for the main file (keeping this for compatibility)
                 string outputFilePath = Path.Combine(_outputDirectory, $"{batchId}.parquet");
                 
