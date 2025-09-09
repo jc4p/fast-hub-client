@@ -333,7 +333,7 @@ namespace HubClient.Production.Storage
         /// <summary>
         /// Creates a data column for writing to Parquet
         /// </summary>
-        private static DataColumn CreateDataColumn(Field field, IList<object> values)
+        private static DataColumn CreateDataColumn(Field field, IList<object?> values)
         {
             if (field is DataField<int> intField)
                 return new DataColumn(intField, values.Select(v => v is int i ? i : 0).ToArray());
@@ -362,9 +362,9 @@ namespace HubClient.Production.Storage
         /// <summary>
         /// Extracts values for a specific column from rows
         /// </summary>
-        private static IList<object> ExtractColumnValues(IReadOnlyList<IDictionary<string, object>> rows, string columnName, int startIndex, int count)
+        private static IList<object?> ExtractColumnValues(IReadOnlyList<IDictionary<string, object>> rows, string columnName, int startIndex, int count)
         {
-            var values = new List<object>(count);
+            var values = new List<object?>(count);
             int endIndex = startIndex + count;
             
             for (int i = startIndex; i < endIndex; i++)
@@ -379,10 +379,10 @@ namespace HubClient.Production.Storage
         /// <summary>
         /// Extracts values for a specific column from rows using memory-optimized technique
         /// </summary>
-        private static IList<object> ExtractColumnValuesOptimized(IReadOnlyList<IDictionary<string, object>> rows, string columnName, int startIndex, int count)
+        private static IList<object?> ExtractColumnValuesOptimized(IReadOnlyList<IDictionary<string, object>> rows, string columnName, int startIndex, int count)
         {
             // Use a List with specified capacity to avoid resizing but still be clearable
-            var values = new List<object>(count);
+            var values = new List<object?>(count);
             int endIndex = startIndex + count;
             
             for (int i = startIndex; i < endIndex; i++)

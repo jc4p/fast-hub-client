@@ -185,10 +185,10 @@ namespace HubClient.Production
             }
             
             bool isSingleFid = specificFid.HasValue;
-            uint startFid = isSingleFid ? specificFid.Value : 0; // Will be set dynamically
-            uint endFid = isSingleFid ? specificFid.Value : 1;
+            uint startFid = isSingleFid ? specificFid.GetValueOrDefault() : 0; // Will be set dynamically
+            uint endFid = isSingleFid ? specificFid.GetValueOrDefault() : 1;
             
-            string scopeDisplay = isSingleFid ? $"for FID {specificFid.Value}" : "from latest FID down to 1";
+            string scopeDisplay = isSingleFid ? $"for FID {specificFid.GetValueOrDefault()}" : "from latest FID down to 1";
             Console.WriteLine($"Starting HubClient {messageTypeDisplay} message crawler - processing {scopeDisplay}...");
 
             long? cutoffTimestamp = null;
@@ -364,11 +364,13 @@ namespace HubClient.Production
                                 message.Data.CastAddBody.Mentions?.Count ?? 0,
                                 !string.IsNullOrEmpty(message.Data.CastAddBody.ParentUrl));
                                 
-                            dict["Text"] = message.Data.CastAddBody.Text;
-                            dict["Mentions"] = string.Join(",", message.Data.CastAddBody.Mentions);
+                            dict["Text"] = message.Data.CastAddBody.Text ?? string.Empty;
+                            dict["Mentions"] = message.Data.CastAddBody.Mentions != null
+                                ? string.Join(",", message.Data.CastAddBody.Mentions)
+                                : string.Empty;
                             dict["ParentCastId"] = message.Data.CastAddBody.ParentCastId != null ? 
                                 $"{message.Data.CastAddBody.ParentCastId.Fid}:{ToHexString(message.Data.CastAddBody.ParentCastId.Hash)}" : "";
-                            dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl;
+                            dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl ?? string.Empty;
                             dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ? 
                                 string.Join("|", message.Data.CastAddBody.Embeds) : "";
                         }
@@ -377,15 +379,15 @@ namespace HubClient.Production
                         if (message.Data?.CastRemoveBody != null)
                         {
                             dict["TargetHash"] = message.Data.CastRemoveBody.TargetHash != null ? 
-                                ToHexString(message.Data.CastRemoveBody.TargetHash) : "";
+                                ToHexString(message.Data.CastRemoveBody.TargetHash) : string.Empty;
                         }
                     }
                     else if (isReactionMessages)
                     {
                         // Reaction specific fields
-                        dict["ReactionType"] = "";
-                        dict["TargetCastId"] = "";
-                        dict["TargetUrl"] = "";
+                        dict["ReactionType"] = string.Empty;
+                        dict["TargetCastId"] = string.Empty;
+                        dict["TargetUrl"] = string.Empty;
                         
                         // Add ReactionBody specific properties if available
                         if (message.Data?.ReactionBody != null)
@@ -393,13 +395,13 @@ namespace HubClient.Production
                             dict["ReactionType"] = message.Data.ReactionBody.Type.ToString();
                             dict["TargetCastId"] = message.Data.ReactionBody.TargetCastId != null ? 
                                 $"{message.Data.ReactionBody.TargetCastId.Fid}:{ToHexString(message.Data.ReactionBody.TargetCastId.Hash)}" : "";
-                            dict["TargetUrl"] = message.Data.ReactionBody.TargetUrl;
+                            dict["TargetUrl"] = message.Data.ReactionBody.TargetUrl ?? string.Empty;
                         }
                     }
                     else if (isLinkMessages)
                     {
                         // Link specific fields
-                        dict["LinkType"] = "";
+                        dict["LinkType"] = string.Empty;
                         dict["TargetFid"] = 0L;
                         dict["DisplayTimestamp"] = 0L;
                         
@@ -414,8 +416,8 @@ namespace HubClient.Production
                     else if (isProfileMessages)
                     {
                         // UserData specific fields
-                        dict["UserDataType"] = "";
-                        dict["Value"] = "";
+                        dict["UserDataType"] = string.Empty;
+                        dict["Value"] = string.Empty;
                         
                         // Add UserDataBody specific properties if available
                         if (message.Data?.UserDataBody != null)
@@ -474,7 +476,7 @@ namespace HubClient.Production
                     try
                     {
                         // Set up pagination parameters for this FID
-                        byte[] pageToken = null;
+                        byte[]? pageToken = null;
                         uint pageSize = 100;
                         bool hasMoreMessages = true;
                         int pageCount = 0;
@@ -755,7 +757,7 @@ namespace HubClient.Production
                         var fidRequest = new FidRequest { Fid = currentFid };
                         
                         // Check storage limits to get tier subscription info
-                        StorageLimitsResponse storageLimits = null;
+                        StorageLimitsResponse? storageLimits = null;
                         bool hasProMembership = false;
                         long proExpiresAt = 0;
                         
@@ -805,7 +807,7 @@ namespace HubClient.Production
                                     $"GetVerificationsByFid-{currentFid}");
                                 
                                 // Find the latest Ethereum verification
-                                Message latestEthVerification = null;
+                                Message? latestEthVerification = null;
                                 ulong latestTimestamp = 0;
                                 
                                 foreach (var message in verificationResponse.Messages)

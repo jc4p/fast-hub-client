@@ -31,7 +31,7 @@ namespace HubClient.Production.Grpc
         public ResilientGrpcClient(
             Func<GrpcChannel> channelProvider, 
             int maxConcurrentCalls = 1000,
-            Func<IGrpcResiliencePolicy> resiliencePolicyFactory = null)
+            Func<IGrpcResiliencePolicy>? resiliencePolicyFactory = null)
         {
             _channelProvider = channelProvider ?? throw new ArgumentNullException(nameof(channelProvider));
             _semaphore = new SemaphoreSlim(maxConcurrentCalls, maxConcurrentCalls);
@@ -74,7 +74,9 @@ namespace HubClient.Production.Grpc
                 {
                     // Create client and channel (channel manager handles pooling)
                     var channel = _channelProvider();
-                    var client = (TClient)Activator.CreateInstance(typeof(TClient), channel);
+                    var clientObj = Activator.CreateInstance(typeof(TClient), channel)
+                                   ?? throw new InvalidOperationException("Failed to create gRPC client instance");
+                    var client = (TClient)clientObj;
                     
                     // Execute the call
                     return await callFunc(client).ConfigureAwait(false);
@@ -123,14 +125,16 @@ namespace HubClient.Production.Grpc
             try
             {
                 // Execute with resilience patterns
-                return await policy.ExecuteAsync(async token =>
+                return await policy.ExecuteAsync(token =>
                 {
                     // Create client and channel (channel manager handles pooling)
                     var channel = _channelProvider();
-                    var client = (TClient)Activator.CreateInstance(typeof(TClient), channel);
+                    var clientObj = Activator.CreateInstance(typeof(TClient), channel)
+                                   ?? throw new InvalidOperationException("Failed to create gRPC client instance");
+                    var client = (TClient)clientObj;
                     
-                    // Execute the call - no need to await since it returns directly
-                    return callFunc(client);
+                    // Execute the call - wrap in Task.FromResult
+                    return Task.FromResult(callFunc(client));
                 }, operationKey, linkedCts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)

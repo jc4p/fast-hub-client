@@ -262,7 +262,7 @@ namespace HubClient.Core.Storage
         /// <param name="field">Field definition</param>
         /// <param name="values">Values for the column</param>
         /// <returns>Data column ready to write</returns>
-        private static DataColumn CreateDataColumn(Field field, IList<object> values)
+        private static DataColumn CreateDataColumn(Field field, IList<object?> values)
         {
             return field switch
             {
@@ -306,9 +306,9 @@ namespace HubClient.Core.Storage
         /// <summary>
         /// Extracts values for a specific column from all rows
         /// </summary>
-        private static IList<object> ExtractColumnValues(IReadOnlyList<IDictionary<string, object>> rows, string columnName)
+        private static IList<object?> ExtractColumnValues(IReadOnlyList<IDictionary<string, object>> rows, string columnName)
         {
-            var values = new List<object>(rows.Count);
+            var values = new List<object?>(rows.Count);
             
             foreach (var row in rows)
             {

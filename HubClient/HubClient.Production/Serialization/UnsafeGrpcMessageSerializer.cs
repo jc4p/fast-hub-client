@@ -103,7 +103,7 @@ namespace HubClient.Production.Serialization
         /// <summary>
         /// Asynchronously deserializes a message from a stream
         /// </summary>
-        public async ValueTask<T> DeserializeAsync(Stream stream)
+        public ValueTask<T> DeserializeAsync(Stream stream)
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             if (!stream.CanRead) throw new ArgumentException("Stream must be readable", nameof(stream));
@@ -114,8 +114,7 @@ namespace HubClient.Production.Serialization
             // Use existing Protobuf API for parsing
             using var codedStream = new CodedInputStream(stream);
             message.MergeFrom(codedStream);
-            
-            return message;
+            return ValueTask.FromResult(message);
         }
 
         /// <summary>

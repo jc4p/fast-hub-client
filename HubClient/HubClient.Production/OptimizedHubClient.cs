@@ -29,7 +29,7 @@ namespace HubClient.Production
     /// </summary>
     public class OptimizedHubClient : IDisposable, IAsyncDisposable
     {
-        private readonly ILogger<OptimizedHubClient> _logger;
+        private readonly ILogger<OptimizedHubClient>? _logger;
         private readonly OptimizedHubClientOptions _options;
         private readonly MultiplexedChannelManager _connectionManager;
         private readonly RecyclableMemoryStreamManager _streamManager;
@@ -46,7 +46,7 @@ namespace HubClient.Production
         /// </summary>
         /// <param name="options">Client configuration options</param>
         /// <param name="logger">Optional logger</param>
-        public OptimizedHubClient(OptimizedHubClientOptions options, ILogger<OptimizedHubClient> logger = null)
+        public OptimizedHubClient(OptimizedHubClientOptions options, ILogger<OptimizedHubClient>? logger = null)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _logger = logger;
@@ -232,7 +232,7 @@ namespace HubClient.Production
                 try
                 {
                     // Deserialize the response
-                    if (serializer.TryDeserialize(responseBytes, out var responseMessage))
+                    if (serializer.TryDeserialize(responseBytes, out var responseMessage) && responseMessage is not null)
                     {
                         // Process the message
                         await messageProcessor(responseMessage).ConfigureAwait(false);
@@ -311,7 +311,7 @@ namespace HubClient.Production
         /// </summary>
         /// <param name="operationKey">The operation key for the pipeline</param>
         /// <returns>Pipeline metrics or null if the pipeline doesn't exist</returns>
-        public PipelineMetrics GetPipelineMetrics(string operationKey)
+        public PipelineMetrics? GetPipelineMetrics(string operationKey)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(OptimizedHubClient));
@@ -354,7 +354,7 @@ namespace HubClient.Production
             var responseSerializer = HubClient.Core.Serialization.MessageSerializerFactory.Create<TResponse>(_serializerType);
 
             // Create a pipeline consumer
-            var pipelineConsumer = new Func<byte[], ValueTask>(async responseBytes =>
+            var pipelineConsumer = new Func<byte[], ValueTask>(responseBytes =>
             {
                 try
                 {
@@ -366,8 +366,9 @@ namespace HubClient.Production
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing response in pipeline");
+                    _logger?.LogError(ex, "Error processing response in pipeline");
                 }
+                return ValueTask.CompletedTask;
             });
 
             try
@@ -556,8 +557,9 @@ namespace HubClient.Production
                     _pipelineOptions);
         }
 
-        private IConcurrencyPipeline<byte[], byte[]> GetOrCreatePipeline(string operationKey)
+        private IConcurrencyPipeline<byte[], byte[]> GetOrCreatePipeline(string? operationKey)
         {
+            operationKey ??= "Default";
             // Return existing pipeline if available
             if (_activePipelines.TryGetValue(operationKey, out var pipeline))
             {

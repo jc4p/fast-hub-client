@@ -124,10 +124,23 @@ namespace HubClient.Production.Serialization
             using var memoryStream = _streamManager.GetStream();
             message.WriteTo((Stream)memoryStream);
             
-            // Then copy to destination span
+            // Then copy to destination span with exact-read semantics (CA2022)
             memoryStream.Position = 0;
-            memoryStream.Read(destination);
-            
+            int totalRead = 0;
+            while (totalRead < size)
+            {
+                int read = memoryStream.Read(destination.Slice(totalRead));
+                if (read == 0)
+                {
+                    break;
+                }
+                totalRead += read;
+            }
+            if (totalRead < size)
+            {
+                throw new EndOfStreamException($"Expected to read {size} bytes but only read {totalRead}.");
+            }
+
             return size;
         }
 

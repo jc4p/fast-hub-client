@@ -101,7 +101,7 @@ namespace HubClient.Production.Storage
                 Directory.CreateDirectory(workerDir);
                 
                 // Replace problematic reflection with direct logger creation
-                ILogger<OptimizedParquetWriter<T>> workerLogger;
+                ILogger<OptimizedParquetWriter<T>>? workerLogger;
                 
                 // Try to cast the logger instance to ILoggerFactory if it's actually a LoggerFactory
                 if (_logger is ILoggerFactory factory)
@@ -129,7 +129,7 @@ namespace HubClient.Production.Storage
                 var parallelWriter = new OptimizedParquetWriter<T>(
                     workerDir,
                     _messageConverter,
-                    workerLogger,
+                    workerLogger!,
                     _schemaGenerator,
                     _compressionMethod,
                     _rowGroupSize,
@@ -149,10 +149,13 @@ namespace HubClient.Production.Storage
             {
                 _innerLogger = innerLogger ?? throw new ArgumentNullException(nameof(innerLogger));
             }
-            
-            public IDisposable BeginScope<TState>(TState state) => _innerLogger.BeginScope(state);
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+                => _innerLogger.BeginScope(state);
+
             public bool IsEnabled(LogLevel logLevel) => _innerLogger.IsEnabled(logLevel);
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) where TState : notnull
                 => _innerLogger.Log(logLevel, eventId, state, exception, formatter);
         }
         
