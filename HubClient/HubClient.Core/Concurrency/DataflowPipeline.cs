@@ -102,9 +102,8 @@ namespace HubClient.Core.Concurrency
                         Metrics.RecordItemProcessed();
                         
                         // Check if we've processed all enqueued items
-                        if (processedCount == EnqueuedItemCount && 
-                            _processingBlock.Completion != null && 
-                            _processingBlock.Completion.IsCompleted)
+                        var completion = _processingBlock!.Completion;
+                        if (processedCount == EnqueuedItemCount && completion.IsCompleted)
                         {
                             // Signal that all items have been processed
                             _allItemsProcessedTcs.TrySetResult();

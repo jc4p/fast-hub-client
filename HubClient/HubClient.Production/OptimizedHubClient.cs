@@ -64,7 +64,8 @@ namespace HubClient.Production
             _connectionManager = new MultiplexedChannelManager(
                 _options.ServerEndpoint,
                 _options.ChannelCount,
-                _options.MaxConcurrentCallsPerChannel);
+                _options.MaxConcurrentCallsPerChannel,
+                _options.ApiKey);
 
             // Set up pipeline options based on benchmarks
             _pipelineOptions = new PipelineCreationOptions

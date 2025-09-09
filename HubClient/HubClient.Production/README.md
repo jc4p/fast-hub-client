@@ -1,249 +1,118 @@
 # HubClient.Production
 
-A high-performance gRPC client implementation for Hub services, optimized based on extensive benchmarking results.
+A high-performance .NET 9.0 client and crawler for Farcaster Hub. It fetches casts, reactions, links, and profile/user-data messages at scale and writes them to fast, compact Parquet files.
 
-## Key Features
+## Features
 
-- **Highly Optimized**: Uses the fastest approaches identified through rigorous benchmarking
-- **Memory Efficient**: Minimizes allocations and GC pressure with pooling and unsafe operations
-- **Resilient**: Built-in retry policies, circuit breakers, and connection management
-- **Configurable**: Flexible options to tune performance for different workload patterns
-- **Thread-Safe**: Safe for concurrent use from multiple threads
-- **Message Crawler**: Built-in support for crawling and exporting cast and reaction messages to Parquet files
+- Real-world optimized: multiplexed channels, tuned concurrency, efficient pagination
+- API key auth: sends `x-api-key` when `HUB_API_KEY` is set (TLS for https)
+- Message export: casts, reactions, links, and profile messages to Parquet
+- Scalable throughput: 8 channels x 500 calls/channel by default
+- Progress + resilience: periodic progress, retries, bounded queues
 
-## Message Crawler
+## Quick Start
 
-The HubClient includes a high-performance message crawler that can export both cast messages and reactions to Parquet files. The crawler processes FIDs from 1M down to 1, collecting all messages and storing them in an optimized format.
+### Prerequisites
+- .NET 9.0 SDK
 
-### Usage
-
+### Run
 ```bash
+# Go to production client
+cd HubClient/HubClient.Production
+
+# Required: hub URL (local insecure example)
+export HUB_URL=http://localhost:3383
+
+# Optional: API key (adds x-api-key); useful for managed hubs
+export HUB_API_KEY=your-api-key
+
+# Example for Neynar (SSL + API key)
+export HUB_URL=https://snapchain-grpc-api.neynar.com:443
+export HUB_API_KEY=your-neynar-api-key
+
 # Crawl cast messages (default)
 dotnet run
 
-# Explicitly specify cast messages
-dotnet run --type casts
-
-# Crawl reaction messages
+# Crawl reactions / links / profiles
 dotnet run --type reactions
+dotnet run --type links
+dotnet run --profiles
 
-# Crawl messages for a specific FID
-dotnet run --fid 977233
-
-# Crawl profile data for a specific FID
+# Only a specific FID
+dotnet run --fid 977233            # with default type=casts
 dotnet run --profiles --fid 977233
+
+# Only messages from last N days
+dotnet run --days 7                # works with any --type
+
+# Sanity check connection
+dotnet run --test-connection
+
+# Export active pro members (FID + primary ETH address)
+dotnet run --pro-members
 ```
 
-### Output Structure
+## Configuration
 
-The crawler creates the following directory structure:
+These environment variables mirror the Realtime Listener setup and are supported here as well:
+
+- HUB_URL: Required. Hub endpoint, e.g. `http://localhost:3383` or `https://snapchain-grpc-api.neynar.com:443`.
+- HUB_API_KEY: Optional. When set, adds `x-api-key` to all gRPC calls and enables TLS for https endpoints.
+- FARCASTERHUB__CHANNELCOUNT: Optional. Overrides channel count. Default 8 (2 for `--test-connection`).
+- FARCASTERHUB__MAXCONCURRENTCALLSPERCHANNEL: Optional. Overrides max concurrent calls per channel. Default 500 (10 for `--test-connection`).
+
+Notes:
+- For secure endpoints without an API key, TLS is still enabled when `HUB_URL` starts with `https://`.
+- Defaults are tuned for high throughput; lower them on constrained environments.
+
+## Output
+
+Files are written under `output/` by message type:
 
 ```
 output/
 ├── casts/
-│   └── casts_messages/      # Parquet files containing cast messages
-└── reactions/
-    └── reactions_messages/  # Parquet files containing reaction messages
+│   └── casts_messages/      # Parquet files with cast messages
+├── reactions/
+│   └── reactions_messages/  # Parquet files with reaction messages
+├── links/
+│   └── links_messages/      # Parquet files with link messages
+└── profiles/
+    └── profiles_messages/   # Parquet files with user-data messages
 ```
 
-### Data Schema
+## Data Schema
 
-#### Cast Messages
-Fields stored for each cast message:
-- `Fid`: The Farcaster ID of the message creator
-- `MessageType`: Type of the message (CastAdd/CastRemove)
-- `Timestamp`: When the message was created
-- `Hash`: Unique hash of the message
-- `SignatureScheme`: Signature scheme used
-- `Signature`: Message signature
-- `Signer`: Public key of the signer
-- `Text`: Content of the cast (for CastAdd)
-- `Mentions`: Comma-separated list of mentioned FIDs
-- `ParentCastId`: ID of the parent cast if this is a reply
-- `ParentUrl`: URL being replied to (if any)
-- `Embeds`: Pipe-separated list of embedded content
-- `TargetHash`: Hash of the cast being removed (for CastRemove)
+### Cast messages
+- Fid, MessageType (CastAdd/CastRemove), Timestamp, Hash
+- SignatureScheme, Signature, Signer
+- Text, Mentions, ParentCastId, ParentUrl, Embeds
+- TargetHash (for CastRemove)
 
-#### Reaction Messages
-Fields stored for each reaction:
-- `Fid`: The Farcaster ID of the reactor
-- `MessageType`: Type of the message (ReactionAdd/ReactionRemove)
-- `Timestamp`: When the reaction was created
-- `Hash`: Unique hash of the message
-- `SignatureScheme`: Signature scheme used
-- `Signature`: Message signature
-- `Signer`: Public key of the signer
-- `ReactionType`: Type of reaction (like/recast)
-- `TargetCastId`: ID of the cast being reacted to
-- `TargetUrl`: URL being reacted to (if any)
+### Reaction messages
+- Fid, MessageType (ReactionAdd/ReactionRemove), Timestamp, Hash
+- SignatureScheme, Signature, Signer
+- ReactionType (like/recast), TargetCastId, TargetUrl
 
-### Performance Characteristics
+### Link messages
+- Fid, MessageType (LinkAdd/LinkRemove), Timestamp, Hash
+- LinkType, TargetFid, TargetUrl
 
-The crawler is optimized for high-throughput processing:
-- Uses 8 managed channels with 500 concurrent calls per channel
-- Implements efficient pagination with 100 messages per page
-- Periodically flushes data to disk (every 1000 FIDs)
-- Provides detailed progress tracking and time estimates
-- Handles errors gracefully with automatic retries
+### Profile/User-data messages
+- Fid, MessageType (UserDataAdd/Remove), Timestamp, Hash
+- UserDataType (pfp/display/bio/url), Value
 
-### Example Output
+## Performance
 
-```
-# For full crawl:
-Starting HubClient cast message crawler - processing from 1,050,000 down to 1...
-Progress: 25.50% complete | Current: FID 750000 | Stats: 1234 active FIDs, 56789 total cast messages | Time: 45.2 minutes elapsed, ~131.8 minutes remaining
+- 8 channels with 500 concurrent calls/channel by default
+- 100 messages/page pagination
+- Bounded queues and periodic flushes for stability
+- Progress logs every 1000 FIDs with ETA
 
-# For specific FID:
-Starting HubClient cast message crawler - processing for FID 977233...
-FID 977233: Retrieved 412 cast messages in 1523ms
-```
+Tip: adjust `FARCASTERHUB__CHANNELCOUNT` and `FARCASTERHUB__MAXCONCURRENTCALLSPERCHANNEL` for your environment.
 
-## Performance Optimizations
+## Troubleshooting
 
-This client incorporates the following optimizations based on benchmark results:
-
-1. **Connection Management**: 
-   - Uses `MultiplexedChannelManager` with 8 managed channels (identified as optimal in benchmarks)
-   - Implements connection pooling with 1000 concurrent calls per channel
-   - Includes health monitoring with circuit breaker pattern
-
-2. **Memory Management**:
-   - Utilizes `UnsafeMemoryAccess` for zero-copy message handling
-   - Implements object pooling for message instances
-   - Uses `RecyclableMemoryStream` for I/O operations
-   - Pre-allocates buffers based on expected data volume
-
-3. **Concurrency Pipeline**:
-   - Implements `Channel`-based pipeline for balanced performance
-   - Configures optimal batch sizes (25000 for most workloads)
-   - Uses controlled parallelism (capped at 16 cores)
-   - Implements backpressure handling with bounded queues
-
-4. **Serialization**:
-   - Implements direct memory manipulation for fastest performance
-   - Uses pooled buffers for serialization operations
-   - Provides span-based APIs for zero-allocation operations
-   - Optimizes for both small and large messages
-
-5. **Error Handling**:
-   - Implements Polly-based retry policies with exponential backoff
-   - Adds circuit breaker for failing endpoints
-   - Includes detailed error tracking and metrics
-
-## Usage Examples
-
-### Basic Usage
-
-```csharp
-// Create client with default optimized options
-using var client = new OptimizedHubClient("http://localhost:5293");
-
-// Get casts for a specific FID
-var response = await client.GetCastsByFidAsync(1234);
-
-// Process the results
-foreach (var message in response.Messages)
-{
-    Console.WriteLine($"Cast: {message.Data.CastAddBody.Text}");
-}
-```
-
-### Advanced Configuration
-
-```csharp
-// Create custom options for specific workloads
-var options = new OptimizedHubClientOptions
-{
-    // Tune connection pooling
-    ChannelCount = 16,                                  // More channels for high concurrency
-    MaxConcurrentCalls = 2000,                          // Higher limits for busy servers
-    
-    // Configure pipeline behavior
-    BatchSize = 10000,                                  // Smaller batches for lower latency
-    PipelineStrategy = PipelineStrategy.Channel,        // Balanced performance
-    
-    // Set memory optimization strategy
-    SerializerType = OptimizedHubClientOptions.SerializerType.UnsafeMemoryAccess,
-    
-    // Configure resilience
-    MaxRetryAttempts = 5,                              // More retries for unstable networks
-    TimeoutMilliseconds = 60000                        // Longer timeout for slow responses
-};
-
-// Create client with custom options
-using var client = new OptimizedHubClient("http://localhost:5293", options);
-
-// Use with pagination
-var response = await client.GetCastsByFidAsync(
-    fid: 1234,
-    pageSize: 50,
-    pageToken: null,
-    reverse: true);
-    
-// Get subsequent pages
-while (response.NextPageToken != null)
-{
-    response = await client.GetCastsByFidAsync(
-        fid: 1234,
-        pageSize: 50,
-        pageToken: response.NextPageToken,
-        reverse: true);
-        
-    // Process results...
-}
-```
-
-## Performance Metrics
-
-The client automatically collects performance metrics during operation:
-
-```csharp
-// Access metrics
-var metrics = client.Metrics;
-
-// Log performance information
-Console.WriteLine($"Requests: {metrics.SuccessCount + metrics.FailureCount}");
-Console.WriteLine($"Successful: {metrics.SuccessCount}");
-Console.WriteLine($"Failed: {metrics.FailureCount}");
-Console.WriteLine($"Average latency: {metrics.AverageLatency.TotalMilliseconds:F2}ms");
-Console.WriteLine($"P99 latency: {metrics.P99Latency.TotalMilliseconds:F2}ms");
-Console.WriteLine($"Throughput: {metrics.AverageThroughput:F2} msgs/sec");
-```
-
-## Workload-Specific Recommendations
-
-Based on benchmark findings, these configurations are recommended for specific workloads:
-
-### High-Throughput Applications
-
-```csharp
-var options = new OptimizedHubClientOptions
-{
-    ChannelCount = 8,
-    BatchSize = 25000,
-    SerializerType = OptimizedHubClientOptions.SerializerType.UnsafeMemoryAccess
-};
-```
-
-### Low-Latency Applications
-
-```csharp
-var options = new OptimizedHubClientOptions
-{
-    ChannelCount = 16,
-    BatchSize = 10000,
-    SerializerType = OptimizedHubClientOptions.SerializerType.UnsafeMemoryAccess,
-    TimeoutMilliseconds = 5000
-};
-```
-
-### Resource-Constrained Environments
-
-```csharp
-var options = new OptimizedHubClientOptions
-{
-    ChannelCount = 4,
-    BatchSize = 5000,
-    SerializerType = OptimizedHubClientOptions.SerializerType.PooledBuffer
-};
-``` 
+- 401/permission errors: set `HUB_API_KEY` and ensure `HUB_URL` uses `https://`.
+- Slow or throttled hub: lower channel count or per-channel concurrency.
+- Large runs: ensure sufficient disk space under `output/`.

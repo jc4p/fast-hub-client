@@ -241,7 +241,7 @@ namespace HubClient.Production.Concurrency
                 while (!token.IsCancellationRequested)
                 {
                     // Get the next item (or wait if none are available)
-                    TOutput item;
+                    TOutput? item = default;
                     try
                     {
                         if (!_outputBuffer.TryReceive(out item))
@@ -265,8 +265,8 @@ namespace HubClient.Production.Concurrency
                         break;
                     }
                     
-                    // Process the item
-                    await consumer(item);
+                    // Process the item (item is expected to be non-null when dequeued)
+                    await consumer(item!);
                 }
             }
             catch (OperationCanceledException)

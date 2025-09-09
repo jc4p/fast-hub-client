@@ -155,7 +155,7 @@ namespace HubClient.Production.Storage
 
             public bool IsEnabled(LogLevel logLevel) => _innerLogger.IsEnabled(logLevel);
 
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) where TState : notnull
+            void ILogger.Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
                 => _innerLogger.Log(logLevel, eventId, state, exception, formatter);
         }
         

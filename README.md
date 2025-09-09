@@ -1,5 +1,14 @@
 # A Fast Farcaster Hub Client
 
+## Production Use Cases
+
+If you’re here to run production-grade tools, start with these two folders:
+
+- [FarcasterRealtimeListener/RealtimeListener.Production](FarcasterRealtimeListener/RealtimeListener.Production) — Real-time events for incoming casts
+- [HubClient/HubClient.Production](HubClient/HubClient.Production) — Fast gRPC client for retrieving any data off a node (casts, links, reactions, profiles)
+
+Both follow an environment-first setup (HUB_URL and optional HUB_API_KEY), with sensible defaults and examples for local or hosted hubs.
+
 ## Usage
 ```bash
 # Download all casts (default)

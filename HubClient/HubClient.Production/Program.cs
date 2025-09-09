@@ -242,11 +242,25 @@ namespace HubClient.Production
                     logger.LogInformation($"Using HUB_URL: {hubUrl} without API key");
                 }
                 
+                // Optional concurrency overrides to mirror RealtimeListener env config style
+                var channelCountEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__CHANNELCOUNT");
+                var maxCallsEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__MAXCONCURRENTCALLSPERCHANNEL");
+                int channelCount = 8;
+                int maxConcurrentPerChannel = 500;
+                if (int.TryParse(channelCountEnv, out var parsedChannels) && parsedChannels > 0)
+                {
+                    channelCount = parsedChannels;
+                }
+                if (int.TryParse(maxCallsEnv, out var parsedMaxCalls) && parsedMaxCalls > 0)
+                {
+                    maxConcurrentPerChannel = parsedMaxCalls;
+                }
+
                 var options = new OptimizedHubClientOptions
                 {
                     ServerEndpoint = hubUrl,
-                    ChannelCount = 8,
-                    MaxConcurrentCallsPerChannel = 500,
+                    ChannelCount = channelCount,
+                    MaxConcurrentCallsPerChannel = maxConcurrentPerChannel,
                     ApiKey = hubApiKey
                 };
                 
@@ -698,11 +712,25 @@ namespace HubClient.Production
                     logger.LogInformation($"Using HUB_URL: {hubUrl} without API key");
                 }
                 
+                // Optional concurrency overrides
+                var channelCountEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__CHANNELCOUNT");
+                var maxCallsEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__MAXCONCURRENTCALLSPERCHANNEL");
+                int channelCount = 8;
+                int maxConcurrentPerChannel = 500;
+                if (int.TryParse(channelCountEnv, out var parsedChannels) && parsedChannels > 0)
+                {
+                    channelCount = parsedChannels;
+                }
+                if (int.TryParse(maxCallsEnv, out var parsedMaxCalls) && parsedMaxCalls > 0)
+                {
+                    maxConcurrentPerChannel = parsedMaxCalls;
+                }
+
                 var options = new OptimizedHubClientOptions
                 {
                     ServerEndpoint = hubUrl,
-                    ChannelCount = 8,
-                    MaxConcurrentCallsPerChannel = 500,
+                    ChannelCount = channelCount,
+                    MaxConcurrentCallsPerChannel = maxConcurrentPerChannel,
                     ApiKey = hubApiKey
                 };
                 

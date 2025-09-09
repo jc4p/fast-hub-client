@@ -21,6 +21,7 @@ namespace HubClient.Production.Grpc
     {
         private readonly List<(GrpcChannel Channel, SemaphoreSlim Limiter)> _channels;
         private readonly string _serverEndpoint;
+        private readonly string? _apiKey;
         private int _nextChannelIndex;
         private bool _disposed;
         private readonly Lazy<IGrpcResiliencePolicy> _defaultResiliencePolicy;
@@ -36,7 +37,7 @@ namespace HubClient.Production.Grpc
         /// <param name="serverEndpoint">The server endpoint</param>
         /// <param name="channelCount">Number of channels to create (default is 8, optimal based on benchmarks)</param>
         /// <param name="maxConcurrentCallsPerChannel">Maximum number of concurrent calls per channel (default is 1000)</param>
-        public MultiplexedChannelManager(string serverEndpoint, int channelCount = 8, int maxConcurrentCallsPerChannel = 1000)
+        public MultiplexedChannelManager(string serverEndpoint, int channelCount = 8, int maxConcurrentCallsPerChannel = 1000, string? apiKey = null)
         {
             if (string.IsNullOrEmpty(serverEndpoint))
                 throw new ArgumentNullException(nameof(serverEndpoint));
@@ -48,12 +49,13 @@ namespace HubClient.Production.Grpc
                 throw new ArgumentException("Max concurrent calls must be greater than zero", nameof(maxConcurrentCallsPerChannel));
 
             _serverEndpoint = serverEndpoint;
+            _apiKey = apiKey;
             _channels = new List<(GrpcChannel, SemaphoreSlim)>(channelCount);
             
             // Create the specified number of channels
             for (int i = 0; i < channelCount; i++)
             {
-                var channel = CreateChannel(serverEndpoint);
+                var channel = CreateChannel(serverEndpoint, apiKey);
                 var limiter = new SemaphoreSlim(maxConcurrentCallsPerChannel, maxConcurrentCallsPerChannel);
                 _channels.Add((channel, limiter));
             }
@@ -192,14 +194,14 @@ namespace HubClient.Production.Grpc
         /// <summary>
         /// Creates a gRPC channel with optimized settings for performance
         /// </summary>
-        private static GrpcChannel CreateChannel(string endpoint)
+        private static GrpcChannel CreateChannel(string endpoint, string? apiKey)
         {
             var httpClientHandler = new HttpClientHandler
             {
                 MaxConnectionsPerServer = 100
             };
 
-            return GrpcChannel.ForAddress(endpoint, new GrpcChannelOptions
+            var channelOptions = new GrpcChannelOptions
             {
                 HttpHandler = httpClientHandler,
                 MaxReceiveMessageSize = 128 * 1024 * 1024, // 128 MB
@@ -207,7 +209,28 @@ namespace HubClient.Production.Grpc
                 MaxRetryAttempts = 5,
                 MaxRetryBufferSize = 128 * 1024 * 1024,    // 128 MB
                 MaxRetryBufferPerCallSize = 16 * 1024 * 1024 // 16 MB
-            });
+            };
+
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                var credentials = CallCredentials.FromInterceptor((context, metadata) =>
+                {
+                    metadata.Add("x-api-key", apiKey);
+                    return Task.CompletedTask;
+                });
+
+                var baseCredentials = endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? ChannelCredentials.SecureSsl
+                    : ChannelCredentials.Insecure;
+
+                channelOptions.Credentials = ChannelCredentials.Create(baseCredentials, credentials);
+            }
+            else if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                channelOptions.Credentials = ChannelCredentials.SecureSsl;
+            }
+
+            return GrpcChannel.ForAddress(endpoint, channelOptions);
         }
     }
-} 
+}

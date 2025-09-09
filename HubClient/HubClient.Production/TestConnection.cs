@@ -75,11 +75,25 @@ namespace HubClient.Production
                 }
                 
                 // Create the optimized hub client
+                // Allow overrides similar to RealtimeListener env config style
+                var channelCountEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__CHANNELCOUNT");
+                var maxCallsEnv = Environment.GetEnvironmentVariable("FARCASTERHUB__MAXCONCURRENTCALLSPERCHANNEL");
+                int channelCount = 2;  // Small number for test
+                int maxConcurrentPerChannel = 10;
+                if (int.TryParse(channelCountEnv, out var parsedChannels) && parsedChannels > 0)
+                {
+                    channelCount = parsedChannels;
+                }
+                if (int.TryParse(maxCallsEnv, out var parsedMaxCalls) && parsedMaxCalls > 0)
+                {
+                    maxConcurrentPerChannel = parsedMaxCalls;
+                }
+
                 var options = new OptimizedHubClientOptions
                 {
                     ServerEndpoint = hubUrl,
-                    ChannelCount = 2,  // Small number for test
-                    MaxConcurrentCallsPerChannel = 10,
+                    ChannelCount = channelCount,
+                    MaxConcurrentCallsPerChannel = maxConcurrentPerChannel,
                     ApiKey = hubApiKey
                 };
                 
