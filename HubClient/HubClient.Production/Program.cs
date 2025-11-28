@@ -95,6 +95,22 @@ namespace HubClient.Production
                 return "";
             return "0x" + Convert.ToHexString(bytes).ToLower();
         }
+
+        /// <summary>
+        /// Formats an embed as a JSON-like string, converting cast_id hashes to hex
+        /// </summary>
+        private static string FormatEmbed(Embed embed)
+        {
+            if (embed.CastId != null)
+            {
+                return $"{{ \"castId\": {{ \"fid\": \"{embed.CastId.Fid}\", \"hash\": \"{ToHexString(embed.CastId.Hash)}\" }} }}";
+            }
+            else if (!string.IsNullOrEmpty(embed.Url))
+            {
+                return $"{{ \"url\": \"{embed.Url}\" }}";
+            }
+            return "";
+        }
         
         public static async Task<int> Main(string[] args)
         {
@@ -385,8 +401,8 @@ namespace HubClient.Production
                             dict["ParentCastId"] = message.Data.CastAddBody.ParentCastId != null ? 
                                 $"{message.Data.CastAddBody.ParentCastId.Fid}:{ToHexString(message.Data.CastAddBody.ParentCastId.Hash)}" : "";
                             dict["ParentUrl"] = message.Data.CastAddBody.ParentUrl ?? string.Empty;
-                            dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ? 
-                                string.Join("|", message.Data.CastAddBody.Embeds) : "";
+                            dict["Embeds"] = message.Data.CastAddBody.Embeds.Count > 0 ?
+                                string.Join("|", message.Data.CastAddBody.Embeds.Select(FormatEmbed)) : "";
                         }
                         
                         // Add CastRemoveBody specific properties if available
